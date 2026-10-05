@@ -26,6 +26,18 @@ jobs:
           node --check options.js
           node --check mcp/server.js
 
+      - name: Validate MCP server dependencies
+        working-directory: mcp
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node -e "Promise.all([import('@modelcontextprotocol/server'),import('@modelcontextprotocol/server/stdio')]).then(()=>console.log('MCP SDK imports OK'))"
+          set +e
+          timeout 2s node server.js </dev/null >/tmp/clippah-mcp.out 2>/tmp/clippah-mcp.err
+          code=$?
+          set -e
+          cat /tmp/clippah-mcp.err
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
+
       - name: Read version
         id: meta
         run: echo "version=$(node -e "const fs=require('fs');console.log(JSON.parse(fs.readFileSync('manifest.json','utf8')).version)")" >> "$GITHUB_OUTPUT"

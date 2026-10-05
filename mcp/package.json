@@ -6,7 +6,7 @@
   "engines": { "node": ">=20" },
   "scripts": { "start": "node server.js" },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.3.0",
     "ws": "^8.18.0",
     "zod": "^4.0.0"
   }
