@@ -1,155 +1,60 @@
-# Installing Clippah
+# Install Clippah 0.2
 
-Clippah 0.1.0 is currently installed as an **unpacked Chromium extension**.
+No Git and no npm are required to test the browser extension.
 
-Supported target for the MVP:
+## Install from ZIP
 
-- Google Chrome 116+
-- Microsoft Edge 116+
-- Brave based on Chromium 116+
+1. On GitHub click Code -> Download ZIP.
+2. Extract it, for example to C:\Clippah.
+3. Open chrome://extensions.
+4. Enable Developer mode.
+5. Click Load unpacked.
+6. Select the folder containing manifest.json.
+7. Pin Clippah.
 
-## Option A — clone with Git
+If Clippah was already installed:
+1. replace/update the files,
+2. open chrome://extensions,
+3. click Reload on Clippah,
+4. refresh the video tab.
 
-### Windows
+## Site access
 
-Open PowerShell:
+Clippah needs access to the video page so it can detect the HTML5 player and place the clipping dock. For development testing set site access to On all sites or at least allow the sites you test.
 
-```powershell
-cd $HOME\Downloads
-git clone https://github.com/SirPaul-code/Clippah.git
-cd Clippah
-```
+## YouTube: one-time capture access per tab
 
-### macOS / Linux
+Clippah can detect timestamps immediately, but reliable YouTube audio/video capture uses Chrome tabCapture.
 
-```bash
-cd ~/Downloads
-git clone https://github.com/SirPaul-code/Clippah.git
-cd Clippah
-```
+Chrome requires the extension to be explicitly invoked before that capture may begin. Do this once for a YouTube tab:
+- Ctrl+Shift+K on Windows/Linux
+- Cmd+Shift+K on macOS
+- or click the Clippah toolbar icon once.
 
-Then load the folder as an unpacked extension.
+The icon badge shows ON while compatibility capture is active.
 
-## Option B — Download ZIP from GitHub
+You do not click it again for every clip. Use the floating Start/Finish controls after that.
 
-1. Open the repository.
-2. Click **Code**.
-3. Click **Download ZIP**.
-4. Extract it.
-5. Use the extracted folder that directly contains `manifest.json`.
+## Make a test clip
 
-Do **not** point Chrome at the ZIP itself.
+1. Open a normal youtube.com/watch page.
+2. Refresh after installing/reloading Clippah.
+3. Confirm the small Clippah dock appears around the player.
+4. Press Ctrl+Shift+K once.
+5. Play the source video.
+6. Click Start clip.
+7. Record 10-30 seconds.
+8. Click Finish clip.
+9. Open Studio.
+10. Switch to 9:16.
+11. Seek later and drag the video toward a speaker. With Auto keyframe enabled, Clippah creates the motion point automatically.
+12. Play from before that point to see interpolation.
+13. Export.
 
-## Chrome
+## Important when upgrading from 0.1
 
-1. Open `chrome://extensions`.
-2. Enable **Developer mode** in the top-right.
-3. Click **Load unpacked**.
-4. Select the Clippah folder containing `manifest.json`.
-5. Open the Extensions menu.
-6. Pin **Clippah**.
+A clip already captured by the old hidden-canvas recorder cannot be repaired by upgrading the code. Create a NEW clip with 0.2 to verify the frozen-frame fix.
 
-## Edge
+## MCP setup
 
-1. Open `edge://extensions`.
-2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the Clippah folder.
-5. Pin Clippah.
-
-## Brave
-
-1. Open `brave://extensions`.
-2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the Clippah folder.
-5. Pin Clippah.
-
-## First-use test
-
-After loading the extension:
-
-1. Open a normal YouTube video.
-2. If the tab was already open before installation, refresh it once.
-3. Wait until the video player is visible.
-4. The Clippah control bar should appear over the player.
-5. Click the Clippah toolbar icon once.
-6. The overlay status should change from **MARK ONLY** to **ARMED**.
-7. Start playback.
-8. Click **[ IN**.
-9. Let several seconds play.
-10. Click **OUT ]**.
-11. Click **STUDIO**.
-12. The captured clip should be listed on the left.
-
-## Keyboard controls
-
-- `[` — IN
-- `]` — OUT
-- `Ctrl+Shift+K` — invoke the Clippah browser action
-- `Cmd+Shift+K` on macOS
-
-The browser may reassign shortcuts. You can inspect/change extension shortcuts at:
-
-- Chrome: `chrome://extensions/shortcuts`
-- Edge: `edge://extensions/shortcuts`
-
-## Updating after a git pull
-
-Run:
-
-```bash
-git pull
-```
-
-Then:
-
-1. Open the browser extensions page.
-2. Find Clippah.
-3. Click **Reload**.
-4. Refresh any already-open video tabs.
-
-## Updating after downloading a new ZIP
-
-1. Replace the old extracted files with the new version, or extract to a new folder.
-2. If the folder path changed, remove the old unpacked extension and load the new folder.
-3. If the path stayed the same, click **Reload** on the extensions page.
-4. Refresh open video tabs.
-
-## Packaging your own ZIP
-
-### Windows
-
-From the repository root:
-
-```powershell
-./scripts/package.ps1
-```
-
-### macOS / Linux
-
-```bash
-chmod +x ./scripts/package.sh
-./scripts/package.sh
-```
-
-Output:
-
-```text
-dist/Clippah-v0.1.0.zip
-```
-
-The package contains only runtime extension files.
-
-## GitHub Actions package
-
-Every push runs the **Validate and package extension** workflow.
-
-It:
-
-1. Parses `manifest.json`.
-2. Runs `node --check` on all runtime JavaScript.
-3. Packages the runtime files.
-4. Uploads the ZIP as a workflow artifact.
-
-This is useful before creating a Chrome Web Store release.
+The extension works without MCP. Agent setup is documented in mcp/README.md.

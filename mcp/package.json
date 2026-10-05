@@ -1,0 +1,13 @@
+{
+  "name": "@clippah/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "ws": "^8.18.0",
+    "zod": "^4.0.0"
+  }
+}

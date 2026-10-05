@@ -1,185 +1,104 @@
 # Clippah
 
-**Clip video where you are already watching it.**
+Clip the moment where you are already watching it. Reframe it in seconds.
 
-Clippah is a Chromium extension prototype for marking moments directly on an HTML5 video player, locally capturing them, and reframing them for social formats without first opening a separate editor.
+Current development version: **0.2.0**
 
-Current version: **0.1.0 MVP**
+## What changed in 0.2
 
-## Install in Chrome / Edge / Brave
+The first MVP proved the workflow, but its compatibility recorder repainted a captured tab into a hidden canvas. Chromium can throttle hidden rendering, which caused the "audio plays but video is frozen on the first frame" failure.
 
-### Fastest way
+0.2 removes that architecture:
+- browser fallback capture records the raw tab MediaStream
+- player cropping happens later in Studio
+- the Clippah dock is positioned outside the player where possible
+- cursor hiding is requested from Chromium when supported
+- no more ARMED / MARK ONLY jargon
+- Start clip / Finish clip is the normal workflow
+- one-time capture permission stays active for that tab
+- Studio is redesigned around a canvas, compact timeline and one inspector
+- drag/zoom can create keyframes automatically
+- optional MCP bridge foundation is included
 
-1. Clone or download this repository.
-2. Open:
-   - Chrome: `chrome://extensions`
-   - Edge: `edge://extensions`
-   - Brave: `brave://extensions`
-3. Enable **Developer mode**.
-4. Click **Load unpacked**.
-5. Select the **Clippah repository folder** — the folder that contains `manifest.json`.
-6. Pin **Clippah** to the browser toolbar.
-7. Open a YouTube video or another page with a normal HTML5 `<video>`.
-8. Click the **Clippah toolbar icon once** to arm local capture.
-9. Use **[ IN** and **OUT ]** over the player, or press `[` and `]`.
-10. Click **STUDIO** to edit captured clips.
+Old clips captured by 0.1 stay old. Make a NEW clip after updating to test the new capture path.
 
-Full install/update instructions: [docs/INSTALL.md](docs/INSTALL.md)
+## Install without Git
 
-## What works now
+1. Open this repository on GitHub.
+2. Code -> Download ZIP.
+3. Extract the ZIP.
+4. Open chrome://extensions.
+5. Enable Developer mode.
+6. Click Load unpacked.
+7. Select the extracted folder that directly contains manifest.json.
+8. Pin Clippah.
+9. Open/refresh a YouTube watch page.
 
-- Detects the largest visible HTML5 `<video>`.
-- Injects a Clippah control bar over the player.
-- Reads timestamps directly from the player's real `video.currentTime`.
-- `[` = IN, `]` = OUT.
-- Persists marker-only segments per page URL.
-- Local tab capture after explicit toolbar activation.
-- Crops capture to the visible video player rectangle.
-- Stores captured clips locally in IndexedDB.
-- Clippah Studio:
-  - 16:9
-  - 9:16
-  - 1:1
-  - Crop
-  - Blur background
-  - Fit
-  - Drag-to-reframe
-  - Zoom
-  - Viewport keyframes
-  - Smooth keyframe interpolation
-  - Local WebM export
-- No backend.
-- No upload.
+Full guide: docs/INSTALL.md
 
-## Why timestamps stay synchronized
+## First YouTube test
 
-Clippah does **not** run a separate timer.
+Chrome requires an explicit extension invocation before an extension may use tabCapture. Because YouTube is routed through the reliable tab-audio compatibility path, there is one unavoidable setup gesture per tab:
+- press Ctrl+Shift+K (Cmd+Shift+K on macOS), or
+- click the Clippah toolbar icon once.
 
-When you press IN or OUT it reads:
+After that, do not touch the toolbar for each clip.
 
-```js
-video.currentTime
-```
+Use the floating dock:
+- Start clip
+- let the moment play
+- Finish clip
+- Studio
 
-from the actual video element being played.
+Keyboard:
+- [ Start clip
+- ] Finish clip
+- Esc Cancel
 
-So if you pause, seek, skip forward, scrub backward, or change playback speed in the native player, Clippah follows the exact same media clock.
+## Studio
 
-```text
-native player timeline
-        |
-        v
-video.currentTime
-        |
-   +----+----+
-   |         |
-  IN        OUT
-```
+Studio supports:
+- 16:9 / 9:16 / 1:1
+- Crop / Blur / Mirror / Fit
+- direct drag-to-reframe
+- wheel zoom
+- Auto keyframe
+- smooth interpolation
+- keyframe diamonds on the timeline
+- local WebM export
+- local source download
 
-## Current capture flow
+The first motion edit away from time 0 automatically seeds the neutral starting frame, so a single later drag already creates visible motion from the starting composition.
 
-```text
-Open video
-    |
-Click Clippah toolbar icon
-    |
-ARMED
-    |
-press [ / click IN
-    |
-local tab capture starts
-    |
-press ] / click OUT
-    |
-clip saved locally
-    |
-STUDIO
-    |
-reframe / keyframes / export
-```
+## Capture architecture
 
-Timestamp marking and media acquisition are intentionally separate systems.
+video page -> direct media capture when clean video+audio are exposed
+           -> raw tabCapture compatibility stream on YouTube/Twitch
+           -> local IndexedDB -> Studio -> crop/aspect/motion -> export
 
-The current acquisition fallback is Chrome `tabCapture`. A later acquisition layer can use direct/background media access on sources where that is technically and policy-safe.
+DRM/protected media is intentionally unsupported.
 
-## Quick test
+## Optional MCP / agent bridge
 
-1. Load the extension unpacked.
-2. Open a YouTube video.
-3. Refresh the YouTube tab once after installing the extension.
-4. Confirm the Clippah overlay appears.
-5. Click the toolbar icon. Status should become **ARMED**.
-6. Play the video.
-7. Press `[`.
-8. Wait 5–10 seconds.
-9. Press `]`.
-10. Open **STUDIO**.
-11. Select **9:16**, drag the frame, add two keyframes, then export.
+The experimental local MCP bridge lives in mcp/.
 
-If something does not work, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+Current tools can inspect status, play/pause/seek, start/finish/cancel a clip, read markers, list local clip metadata, and open Studio.
 
-## Build a ZIP
+The WebSocket bridge binds to 127.0.0.1 and requires a random pairing token. Video bytes are not exposed through MCP.
 
-No npm install or build step is required.
+## Product and UX plans
 
-### Windows PowerShell
+- docs/PRODUCT-PLAN.md
+- docs/UX-DESIGN.md
+- docs/ARCHITECTURE.md
+- docs/TROUBLESHOOTING.md
 
-```powershell
-./scripts/package.ps1
-```
+## Current limitations
 
-### macOS / Linux
-
-```bash
-./scripts/package.sh
-```
-
-The ZIP is written to `dist/`.
-
-GitHub Actions also validates the extension and uploads a ZIP artifact on every push.
-
-## Repository layout
-
-```text
-Clippah/
-├─ manifest.json
-├─ background.js
-├─ content.js
-├─ offscreen.html
-├─ offscreen.js
-├─ editor.html
-├─ editor.css
-├─ editor.js
-├─ docs/
-│  ├─ INSTALL.md
-│  ├─ ARCHITECTURE.md
-│  └─ TROUBLESHOOTING.md
-├─ scripts/
-│  ├─ package.ps1
-│  └─ package.sh
-├─ .github/workflows/
-│  └─ validate-package.yml
-├─ PRIVACY.md
-├─ ROADMAP.md
-└─ CHANGELOG.md
-```
-
-## Important current limitations
-
-- Chrome/Chromium 116+.
-- First MVP targets top-frame HTML5 video players.
-- Cross-origin iframe players need dedicated integration.
-- Current capture is **live between IN and OUT**.
-- Capture records what the browser renders; it is not the same as downloading the original source asset.
-- Moving/resizing the player during an active clip can invalidate the crop rectangle for that recording.
-- DRM/protected media is intentionally unsupported.
-- Export is currently WebM.
-- MP4, captions, POI/person tracking, direct/background acquisition and billing are roadmap items.
-
-See [ROADMAP.md](ROADMAP.md).
-
-## Privacy
-
-The current MVP is local-first. Captured video is stored in browser-local IndexedDB and is not uploaded anywhere by Clippah.
-
-See [PRIVACY.md](PRIVACY.md).
+- Chromium 148+ for the 0.2 development build.
+- YouTube reliable audio capture still needs Chrome's one-time user invocation per tab.
+- Cursor suppression on tab compatibility capture is best-effort.
+- Player geometry is captured at clip start; resizing/theater/fullscreen during a clip can shift crop.
+- WebM export today; MP4 is on the roadmap.
+- captions, POI tracking and billing are not implemented yet.
+- v0.2 still needs real-browser QA across multiple sites.

@@ -1,19 +1,28 @@
+const DB_NAME = 'clippah';
+const DB_VERSION = 2;
 const captures = new Map();
 const recordings = new Map();
 
-function mimeType() {
-  return ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+function bestMimeType() {
+  return ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
     .find(type => MediaRecorder.isTypeSupported(type)) || '';
 }
 
 function openDb() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('clippah', 1);
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains('clips')) {
-        const store = db.createObjectStore('clips', { keyPath: 'id' });
-        store.createIndex('createdAt', 'createdAt');
+        const clips = db.createObjectStore('clips', { keyPath: 'id' });
+        clips.createIndex('createdAt', 'createdAt');
+      }
+      if (!db.objectStoreNames.contains('chunks')) {
+        const chunks = db.createObjectStore('chunks', { keyPath: 'key' });
+        chunks.createIndex('sessionId', 'sessionId');
+      }
+      if (!db.objectStoreNames.contains('sessions')) {
+        db.createObjectStore('sessions', { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -23,22 +32,43 @@ function openDb() {
 
 async function saveClip(record) {
   const db = await openDb();
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction('clips', 'readwrite');
-    tx.objectStore('clips').put(record);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('clips', 'readwrite');
+      tx.objectStore('clips').put(record);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 async function arm(tabId, streamId) {
-  if (captures.has(tabId)) return { ok: true, alreadyArmed: true };
+  if (captures.has(tabId)) return { ok: true, alreadyReady: true };
 
   const media = await navigator.mediaDevices.getUserMedia({
-    audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } },
-    video: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } }
+    audio: {
+      mandatory: {
+        chromeMediaSource: 'tab',
+        chromeMediaSourceId: streamId
+      }
+    },
+    video: {
+      mandatory: {
+        chromeMediaSource: 'tab',
+        chromeMediaSourceId: streamId
+      }
+    }
   });
+
+  const videoTrack = media.getVideoTracks()[0];
+  if (videoTrack) {
+    try {
+      const supported = navigator.mediaDevices.getSupportedConstraints?.() || {};
+      if (supported.cursor) await videoTrack.applyConstraints({ cursor: 'never' });
+    } catch (_) {}
+  }
 
   let audioContext = null;
   if (media.getAudioTracks().length) {
@@ -47,137 +77,124 @@ async function arm(tabId, streamId) {
     source.connect(audioContext.destination);
   }
 
-  const preview = document.createElement('video');
-  preview.muted = true;
-  preview.playsInline = true;
-  preview.srcObject = media;
-  await preview.play();
+  captures.set(tabId, {
+    media,
+    audioContext,
+    settings: videoTrack?.getSettings?.() || {}
+  });
 
-  captures.set(tabId, { media, preview, audioContext });
-  media.getTracks().forEach(track => track.addEventListener('ended', () => disarm(tabId).catch(() => {}), { once: true }));
-  return { ok: true };
+  media.getTracks().forEach(track => {
+    track.addEventListener('ended', () => disarm(tabId).catch(() => {}), { once: true });
+  });
+
+  return { ok: true, settings: captures.get(tabId).settings };
 }
 
 async function disarm(tabId) {
-  const rec = recordings.get(tabId);
-  if (rec) {
-    try { rec.recorder.stop(); } catch (_) {}
-    cancelAnimationFrame(rec.raf);
-    recordings.delete(tabId);
-  }
+  const active = recordings.get(tabId);
+  if (active) await cancel(tabId);
 
-  const cap = captures.get(tabId);
-  if (!cap) return { ok: true };
-  cap.media.getTracks().forEach(t => t.stop());
-  cap.preview.srcObject = null;
-  if (cap.audioContext) await cap.audioContext.close().catch(() => {});
+  const capture = captures.get(tabId);
+  if (!capture) return { ok: true };
+
+  capture.media.getTracks().forEach(track => track.stop());
+  if (capture.audioContext) await capture.audioContext.close().catch(() => {});
   captures.delete(tabId);
   return { ok: true };
 }
 
-function crop(meta, settings) {
-  const vw = Math.max(1, meta.viewportWidth || 1);
-  const vh = Math.max(1, meta.viewportHeight || 1);
-  const cw = settings.width || vw;
-  const ch = settings.height || vh;
-  const scaleX = cw / vw;
-  const scaleY = ch / vh;
-
-  let sx = Math.max(0, (meta.rect?.left || 0) * scaleX);
-  let sy = Math.max(0, (meta.rect?.top || 0) * scaleY);
-  let sw = Math.max(2, (meta.rect?.width || vw) * scaleX);
-  let sh = Math.max(2, (meta.rect?.height || vh) * scaleY);
-  sw = Math.min(sw, cw - sx);
-  sh = Math.min(sh, ch - sy);
-
-  const outScale = Math.min(1, 1920 / sw, 1080 / sh);
-  return {
-    sx, sy, sw, sh,
-    outW: Math.max(2, Math.round(sw * outScale)),
-    outH: Math.max(2, Math.round(sh * outScale))
-  };
-}
-
 async function start(tabId, meta) {
   if (recordings.has(tabId)) return { ok: false, error: 'A clip is already recording.' };
-  const cap = captures.get(tabId);
-  if (!cap) return { ok: false, error: 'Capture is not armed.' };
+  const capture = captures.get(tabId);
+  if (!capture) return { ok: false, error: 'Capture is not enabled for this tab.' };
 
-  const area = crop(meta, cap.media.getVideoTracks()[0]?.getSettings?.() || {});
-  const canvas = document.createElement('canvas');
-  canvas.width = area.outW;
-  canvas.height = area.outH;
-  const ctx = canvas.getContext('2d', { alpha: false });
-
-  let raf = 0;
-  const draw = () => {
-    try {
-      ctx.drawImage(cap.preview, area.sx, area.sy, area.sw, area.sh, 0, 0, canvas.width, canvas.height);
-    } catch (_) {}
-    raf = requestAnimationFrame(draw);
-    const active = recordings.get(tabId);
-    if (active) active.raf = raf;
-  };
-  draw();
-
-  const canvasStream = canvas.captureStream(30);
-  const output = new MediaStream([...canvasStream.getVideoTracks(), ...cap.media.getAudioTracks()]);
-  const type = mimeType();
-  const recorder = new MediaRecorder(output, type ? { mimeType: type, videoBitsPerSecond: 8_000_000 } : undefined);
+  const mimeType = bestMimeType();
+  const recorder = new MediaRecorder(
+    capture.media,
+    mimeType ? { mimeType, videoBitsPerSecond: 10_000_000 } : undefined
+  );
   const chunks = [];
-  recorder.ondataavailable = e => { if (e.data?.size) chunks.push(e.data); };
+  recorder.addEventListener('dataavailable', event => {
+    if (event.data?.size) chunks.push(event.data);
+  });
 
   const id = crypto.randomUUID();
   recordings.set(tabId, {
-    id, recorder, chunks, canvasStream, output, raf,
-    meta: { ...meta, crop: area, captureStartedAt: Date.now() }
+    id,
+    recorder,
+    chunks,
+    startedAt: performance.now(),
+    meta: {
+      ...meta,
+      captureMode: 'tab',
+      captureSettings: capture.settings,
+      captureStartedAt: Date.now()
+    }
   });
+
   recorder.start(1000);
-  return { ok: true, id };
+  return { ok: true, id, mode: 'tab', captureSettings: capture.settings };
 }
 
 async function stop(tabId, stopMeta = {}) {
-  const rec = recordings.get(tabId);
-  if (!rec) return { ok: false, error: 'No active clip recording.' };
+  const active = recordings.get(tabId);
+  if (!active) return { ok: false, error: 'No active clip recording.' };
 
-  const result = await new Promise(resolve => {
-    rec.recorder.addEventListener('stop', async () => {
-      cancelAnimationFrame(rec.raf);
-      rec.canvasStream.getTracks().forEach(t => t.stop());
-
-      const blob = new Blob(rec.chunks, { type: rec.recorder.mimeType || 'video/webm' });
-      const createdAt = Date.now();
-      const record = {
-        id: rec.id, createdAt, blob, mimeType: blob.type, size: blob.size,
-        meta: { ...rec.meta, ...stopMeta, captureStoppedAt: createdAt }
-      };
-
-      try {
-        await saveClip(record);
-        resolve({ ok: true, clipId: record.id, size: record.size });
-      } catch (error) {
-        resolve({ ok: false, error: error?.message || String(error) });
-      }
-    }, { once: true });
-    rec.recorder.stop();
-  });
+  const stopped = new Promise(resolve => active.recorder.addEventListener('stop', resolve, { once: true }));
+  if (active.recorder.state !== 'inactive') active.recorder.stop();
+  await stopped;
 
   recordings.delete(tabId);
-  return result;
+
+  const blob = new Blob(active.chunks, { type: active.recorder.mimeType || 'video/webm' });
+  if (!blob.size) return { ok: false, error: 'The captured clip is empty.' };
+
+  const createdAt = Date.now();
+  const recordedDuration = (performance.now() - active.startedAt) / 1000;
+  const record = {
+    id: active.id,
+    createdAt,
+    blob,
+    mimeType: blob.type,
+    size: blob.size,
+    meta: {
+      ...active.meta,
+      ...stopMeta,
+      captureMode: 'tab',
+      recordedDuration,
+      captureStoppedAt: createdAt
+    }
+  };
+
+  await saveClip(record);
+  return { ok: true, clipId: record.id, size: record.size, recordedDuration };
+}
+
+async function cancel(tabId) {
+  const active = recordings.get(tabId);
+  if (!active) return { ok: true };
+  const stopped = new Promise(resolve => active.recorder.addEventListener('stop', resolve, { once: true }));
+  if (active.recorder.state !== 'inactive') active.recorder.stop();
+  await stopped;
+  recordings.delete(tabId);
+  return { ok: true };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.target !== 'offscreen') return;
+
   (async () => {
     try {
       if (message.type === 'ARM') return sendResponse(await arm(message.tabId, message.streamId));
       if (message.type === 'DISARM') return sendResponse(await disarm(message.tabId));
       if (message.type === 'SEGMENT_START') return sendResponse(await start(message.tabId, message.meta || {}));
       if (message.type === 'SEGMENT_STOP') return sendResponse(await stop(message.tabId, message.meta || {}));
-      sendResponse({ ok: false, error: 'Unknown offscreen message' });
+      if (message.type === 'SEGMENT_CANCEL') return sendResponse(await cancel(message.tabId));
+      sendResponse({ ok: false, error: 'Unknown offscreen message.' });
     } catch (error) {
       sendResponse({ ok: false, error: error?.message || String(error) });
     }
   })();
+
   return true;
 });

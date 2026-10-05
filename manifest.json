@@ -1,18 +1,37 @@
 {
   "manifest_version": 3,
   "name": "Clippah",
-  "version": "0.1.0",
-  "description": "Mark, capture and reframe clips directly where you watch video.",
-  "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "storage", "tabCapture", "offscreen"],
+  "version": "0.2.0",
+  "description": "Clip and reframe video directly where you watch it.",
+  "minimum_chrome_version": "148",
+  "message_serialization": "structured_clone",
+  "permissions": ["activeTab", "storage", "tabCapture", "offscreen", "unlimitedStorage"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "Arm / disarm Clippah capture" },
+  "action": {
+    "default_title": "Enable Clippah capture for this tab",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "commands": {
     "_execute_action": {
       "suggested_key": { "default": "Ctrl+Shift+K", "mac": "Command+Shift+K" },
-      "description": "Arm or disarm Clippah on the current tab"
+      "description": "Enable or disable compatibility capture for the current tab"
     }
+  },
+  "options_page": "options.html",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*"
   },
   "content_scripts": [{
     "matches": ["<all_urls>"],

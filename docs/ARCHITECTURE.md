@@ -1,198 +1,43 @@
 # Clippah architecture
 
-## Components
+## Capture providers
 
-```text
-video page
-  |
-  | content.js
-  | - detects <video>
-  | - overlay UI
-  | - reads video.currentTime
-  | - stores markers
-  v
-background.js
-  |
-  | - user-invoked tab capture permission boundary
-  | - creates offscreen document
-  | - routes start/stop messages
-  v
-offscreen.html + offscreen.js
-  |
-  | - receives tab MediaStream
-  | - keeps capture alive outside page UI
-  | - crops to player rectangle
-  | - MediaRecorder
-  | - IndexedDB
-  v
-editor.html + editor.js
-  |
-  | - reads clips from IndexedDB
-  | - aspect conversion
-  | - blur / fit / crop
-  | - drag reframe
-  | - keyframes
-  | - local export
-```
+Clippah treats timeline selection, acquisition and editing as separate systems.
 
-## Timeline model
+### Timeline
+The page content script reads the actual media clock: video.currentTime. No wall-clock approximation is used for IN/OUT timestamps.
 
-The timestamp source of truth is the actual HTML media element:
+### Direct media provider
+On compatible pages, HTMLMediaElement.captureStream() can expose clean video + audio tracks. Clippah records those tracks locally and sends MediaRecorder chunks to extension storage.
 
-```js
-video.currentTime
-```
+### Browser compatibility provider
+For hosts where direct audio is unreliable, currently YouTube/Twitch, Clippah uses Chrome tabCapture.
 
-Clippah never tries to estimate playback position using wall-clock time.
+The action/shortcut enables one tab-capture MediaStream for the tab. Individual clips start/stop MediaRecorder on that existing stream.
 
-Each marker stores values such as:
+Unlike 0.1, the compatibility stream is NOT repainted through an offscreen canvas. It is recorded directly, eliminating hidden-render-loop throttling as a source of frozen frames.
 
-```js
-{
-  start: 81.362,
-  end: 112.905,
-  duration: 31.543,
-  url: "...",
-  title: "...",
-  createdAt: 1791234567890
-}
-```
+## Storage
 
-This keeps markers correct when the user:
+Extension-origin IndexedDB database clippah, schema v2:
+- clips: finished blobs + metadata
+- chunks: temporary structured-clone direct-capture chunks
+- sessions: temporary direct-capture session metadata
 
-- pauses,
-- seeks,
-- changes playback speed,
-- jumps backwards,
-- uses the native player's timeline.
+Marker ranges and edit projects use chrome.storage.local.
 
-## Capture permission model
+## Studio crop
 
-Chrome tab capture must originate from an explicit extension invocation.
+At clip start the content script stores player bounding rect and viewport dimensions. Studio maps that normalized rectangle onto the recorded tab frame and uses it as the source region.
 
-For the MVP:
+## Motion
 
-```text
-toolbar click
-    |
-background.js
-    |
-chrome.tabCapture.getMediaStreamId()
-    |
-offscreen document
-    |
-navigator.mediaDevices.getUserMedia(...)
-```
+Viewport transform is time + normalized x/y + zoom. Studio smoothstep-interpolates neighboring points.
 
-Chrome 116+ allows the stream ID obtained by the service worker to be consumed by an offscreen extension document.
+With Auto keyframe enabled, pointer-up or zoom upserts a keyframe at the current playhead. If it is the first edit and the playhead is not at the beginning, Studio also seeds a neutral point at time 0.
 
-## Why an offscreen document exists
+## MCP bridge
 
-Manifest V3 service workers do not have normal DOM/media APIs.
+MCP host <-> stdio <-> local Node MCP server <-> token-authenticated loopback WebSocket <-> Clippah service worker <-> active content script.
 
-The offscreen document provides access to:
-
-- `navigator.mediaDevices`
-- `MediaRecorder`
-- `canvas`
-- `requestAnimationFrame`
-- `AudioContext`
-- IndexedDB
-
-while the browser extension UI is not open.
-
-## Crop model
-
-At IN, `content.js` sends:
-
-- player bounding rectangle,
-- viewport dimensions,
-- source video dimensions,
-- current timestamp.
-
-The offscreen capture receives the tab stream and maps the visible player rectangle into the capture stream dimensions.
-
-Current limitation: the crop rectangle is calculated when the recording starts. If the player moves or changes size during that clip, the current MVP does not dynamically remap it.
-
-## Local storage
-
-Two independent storage paths exist.
-
-### Markers
-
-`chrome.storage.local`
-
-Used for lightweight IN/OUT metadata.
-
-### Captured video
-
-IndexedDB database:
-
-```text
-database: clippah
-store: clips
-```
-
-Each captured clip contains:
-
-- Blob
-- MIME type
-- byte size
-- capture metadata
-- source page metadata
-- segment timestamps
-
-## Studio reframe model
-
-The editor renders through a canvas.
-
-A transform is:
-
-```js
-{
-  x: 0.5,
-  y: 0.5,
-  zoom: 1.4
-}
-```
-
-where `x` and `y` are normalized viewport focus coordinates.
-
-A keyframe adds time:
-
-```js
-{
-  time: 8.25,
-  x: 0.31,
-  y: 0.48,
-  zoom: 1.4
-}
-```
-
-Between keyframes Clippah performs smoothstep interpolation.
-
-The user therefore does not need a traditional NLE animation graph.
-
-## Acquisition roadmap
-
-The architecture intentionally separates:
-
-```text
-TIMELINE / MARKERS
-        |
-        +-------------------+
-                            |
-MEDIA ACQUISITION           |
-        |                   |
-  +-----+------+            |
-  |            |            |
-tabCapture   direct-safe    |
-fallback     source layer   |
-  |            |            |
-  +-----+------+            |
-        |                   |
-        v                   |
-      STUDIO <--------------+
-```
-
-The future direct/background source layer should only operate where technically and policy-safe. It should not depend on DRM circumvention.
+The bridge exposes commands, not video bytes. The extension remains execution authority.
