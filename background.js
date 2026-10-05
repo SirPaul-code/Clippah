@@ -1,4 +1,5 @@
 const OFFSCREEN_URL = 'offscreen.html';
+let creatingOffscreen = null;
 
 async function ensureOffscreen() {
   const contexts = await chrome.runtime.getContexts({
@@ -6,11 +7,20 @@ async function ensureOffscreen() {
     documentUrls: [chrome.runtime.getURL(OFFSCREEN_URL)]
   });
   if (contexts.length) return;
-  await chrome.offscreen.createDocument({
-    url: OFFSCREEN_URL,
-    reasons: ['USER_MEDIA'],
-    justification: 'Capture the user-invoked tab locally for clip recording.'
-  });
+
+  if (!creatingOffscreen) {
+    creatingOffscreen = chrome.offscreen.createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['USER_MEDIA'],
+      justification: 'Capture the user-invoked tab locally for clip recording.'
+    });
+  }
+
+  try {
+    await creatingOffscreen;
+  } finally {
+    creatingOffscreen = null;
+  }
 }
 
 async function captured(tabId) {
@@ -26,6 +36,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return;
   try {
     await ensureOffscreen();
+
     if (await captured(tab.id)) {
       await chrome.runtime.sendMessage({ target: 'offscreen', type: 'DISARM', tabId: tab.id });
       await tell(tab.id, { type: 'CLIPPAH_CAPTURE_STATE', armed: false });
@@ -41,6 +52,12 @@ chrome.action.onClicked.addListener(async (tab) => {
     await tell(tab.id, { type: 'CLIPPAH_CAPTURE_STATE', armed: true });
   } catch (error) {
     await tell(tab.id, { type: 'CLIPPAH_ERROR', message: error?.message || String(error) });
+  }
+});
+
+chrome.tabCapture.onStatusChanged.addListener(async (info) => {
+  if (info.status === 'stopped' || info.status === 'error') {
+    await tell(info.tabId, { type: 'CLIPPAH_CAPTURE_STATE', armed: false });
   }
 });
 

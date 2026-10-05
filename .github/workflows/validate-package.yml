@@ -1,0 +1,50 @@
+name: Validate and package extension
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate-and-package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate manifest
+        run: |
+          node -e "const fs=require('fs'); const m=JSON.parse(fs.readFileSync('manifest.json','utf8')); if(m.manifest_version!==3) throw new Error('Expected Manifest V3'); console.log('Clippah', m.version)"
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check background.js
+          node --check content.js
+          node --check offscreen.js
+          node --check editor.js
+
+      - name: Read version
+        id: meta
+        shell: bash
+        run: |
+          echo "version=$(node -e "const fs=require('fs'); console.log(JSON.parse(fs.readFileSync('manifest.json','utf8')).version)")" >> "$GITHUB_OUTPUT"
+
+      - name: Package extension
+        shell: bash
+        run: |
+          mkdir -p dist
+          zip -j "dist/Clippah-v${{ steps.meta.outputs.version }}.zip"             manifest.json             background.js             content.js             offscreen.html             offscreen.js             editor.html             editor.css             editor.js
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clippah-v${{ steps.meta.outputs.version }}
+          path: dist/Clippah-v${{ steps.meta.outputs.version }}.zip
+          if-no-files-found: error
