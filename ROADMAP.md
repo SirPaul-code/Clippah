@@ -1,102 +1,95 @@
-# Clippah product plan
+# Clippah roadmap
 
-## P0 — capture reliability — DONE / ongoing hardening
+## v0.4 — lightweight browser NLE — implemented
 
-- audio + moving video capture
-- persistent compatibility capture per browser tab
-- no hidden-canvas recording loop
-- local storage
-- automatic Studio Library refresh
+- fixed Add clip modal hidden-state bug
+- Library → V1 drag & drop
+- timeline segment data model
+- segment reorder
+- Cut tool
+- split at playhead
+- Delete / Backspace
+- right-click segment menu
+- duplicate/delete segment
+- V1 video track
+- A1 audio waveform
+- T text track
+- CC captions track
+- per-segment speed
+- per-segment video fade in/out
+- per-segment volume
+- per-segment audio fade in/out
+- text overlays and timing
+- Local Font Access integration
+- motion keyframes per segment
+- dynamic Library refresh after new recording
+- clearer one-time YouTube capture onboarding
+- expanded MCP timeline/text/audio/caption/export tools
 
-## P1 — creator UX — 0.3 DONE
+## Next — acquisition engine
 
-- larger readable UI
-- tooltips and inline hints
-- direct canvas reframe
-- auto keyframes
-- explicit Clear all motion
-- sequence strip
-- + before / after / between clips
-- clip folders and multi-select organization
-- sequence playback/export
-
-## P2 — captions — 0.3 baseline DONE
-
-- collect visible/source captions while clipping
-- language-agnostic caption data
-- SRT/VTT import
-- caption burn-in
-- SRT export
-
-Next caption step:
-
-- optional fully local Whisper ASR via WebGPU/WASM
-- model download/cache UI
-- word-level editing/styling presets
-- translation as a separate optional local/cloud provider
-
-## P3 — agent/MCP editing — 0.3 foundation DONE
-
-- exact rendered frame retrieval
-- multi-frame sampling
-- scene/source/output geometry
-- pixel viewport movement
-- exact normalized viewport controls
-- zoom
-- keyframes
-- aspect ratio
-- clip append
-- browser clip control
-- Windows one-click MCP setup
-
-Next:
-
-- agent folder/project management
-- caption editing/transcription tools
-- export jobs
-- POI/person tracking suggestions
-- scene-change sampling helper
-
-## P4 — acquisition engine — NEXT
-
-Separate timeline/markers from media acquisition.
+Separate marking/editing from media acquisition.
 
 Providers:
 
-1. clean direct media capture where available
-2. direct/background media acquisition where technically/policy-safe
+1. clean media-element capture where available
+2. direct/background acquisition where technically and policy-safe
 3. tabCapture compatibility fallback
 
 Goals:
 
-- user may seek and mark non-linearly
-- media acquisition runs independently where possible
-- no cursor/UI in clean-source provider
+- mark non-linearly while watching/seeking
+- acquire source independently where possible
+- avoid browser UI/cursor in clean-source mode
+- preserve original quality where permitted
 - no DRM circumvention
 
-## P5 — intelligent reframing
+## Next — local automatic captions
 
-- click/select a POI/person
-- lightweight local tracking
-- agent-assisted frame analysis
-- auto-switch subject
-- manual drag always overrides with a keyframe
+- optional downloadable Whisper-family model
+- WebGPU/WASM local inference
+- multilingual transcription
+- model cache manager
+- word/timing editing
+- caption style presets
+- optional translation provider later
 
-## P6 — productization
+No paid transcription dependency should be required for the core local mode.
 
-Target initial Pro price: around **€5/month**.
+## Next — intelligent reframing / POI
 
-Free:
+- click person/object as POI
+- local face/person/object tracking where feasible
+- agent-assisted scene sampling
+- automatic subject switching
+- manual drag always overrides via keyframe
+- split-screen / two-speaker modes
 
-- basic clips
-- limited export
+## Next — output/productization
+
+- MP4/H.264 where browser/codecs permit
+- export quality presets
+- project naming/history
+- undo/redo
+- keyboard editor map
+- autosave/recovery
+- performance profiling for long projects
+
+## Commercial layer
+
+Target initial Pro price: roughly **€5/month**.
+
+Potential Free:
+
+- core clipping
+- constrained export
 - small attribution
 
-Pro:
+Potential Pro:
 
-- no watermark
-- higher quality
-- full motion/keyframes
-- captions/transcription
-- agent tools / tracking
-- saved presets
+- no attribution
+- higher-quality/output options
+- full motion
+- local transcription
+- agent/POI tools
+- saved presets/projects
