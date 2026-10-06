@@ -58,3 +58,30 @@ A clip already captured by the old hidden-canvas recorder cannot be repaired by 
 ## MCP setup
 
 The extension works without MCP. Agent setup is documented in mcp/README.md.
+
+
+## One click per YouTube tab
+
+For YouTube/Twitch compatibility capture, Chrome itself requires a user gesture before an extension can call `tabCapture`.
+
+After opening a new YouTube tab:
+
+1. Look at the Clippah floating dock. It says **Enable capture**.
+2. The Clippah toolbar icon shows a purple **1** badge.
+3. Click the Clippah toolbar icon **once** (or press `Ctrl+Shift+K`).
+4. The toolbar badge changes to **ON**.
+5. Leave it ON and make as many clips as you want with **Start clip / Finish clip**.
+
+You do **not** need to click the extension for each clip. The one click is only the browser permission boundary for that tab.
+
+## Studio v0.4 quick start
+
+- Drag clips from Library onto **V1**.
+- Drag V1 segments to reorder.
+- Choose **Cut**, then click a segment to split it.
+- Press **Delete/Backspace** or right-click a segment to remove it from the project.
+- A1 displays the local audio waveform.
+- Select a segment to change speed, video/audio fades and volume.
+- Use Motion for 9:16 reframing/keyframes.
+- Use Text to add timed text and load browser-accessible PC fonts.
+- Use Captions for source captions or SRT/VTT.
