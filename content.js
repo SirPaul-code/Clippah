@@ -155,11 +155,17 @@
   function showCaptureSetup() {
     const el = state.els.notice;
     el.hidden = false;
-    el.innerHTML = `<strong>One-time capture access for this tab.</strong> Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>K</kbd> or click the Clippah toolbar icon once. After that, clipping happens entirely from this player.`;
+    el.innerHTML = `
+      <strong>1 click needed for YouTube — only once per tab.</strong><br>
+      <span style="display:block;margin-top:6px">① In the Chrome toolbar, click the purple <b>Clippah C</b> extension icon once.</span>
+      <span style="display:block;margin-top:4px">② The icon will show <b>ON</b>. Then use <b>Start clip / Finish clip</b> here for every clip — no more toolbar clicks.</span>
+      <span style="display:block;margin-top:6px;color:#a99b77">Keyboard alternative: <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>K</kbd>.</span>
+    `;
+    chrome.runtime.sendMessage({ type: 'CAPTURE_NEEDED' }).catch(() => {});
     clearTimeout(state.noticeTimer);
     state.noticeTimer = setTimeout(() => {
       if (state.compatibilityReady) el.hidden = true;
-    }, 8000);
+    }, 12000);
   }
 
   function hideNotice() {
@@ -406,7 +412,7 @@
       if (!state.compatibilityReady) {
         state.inTime = null;
         showCaptureSetup();
-        toast('Enable capture once for this tab, then Start clip will work normally.', false, 5000);
+        toast('Click the purple Clippah toolbar icon once. When it says ON, Start clip works normally for this whole tab.', false, 6500);
         return;
       }
 
@@ -596,7 +602,11 @@
       state.compatibilityReady = !!message.ready;
       if (state.compatibilityReady) hideNotice();
       updateUi();
-      toast(state.compatibilityReady ? 'Capture enabled for this tab.' : 'Capture access ended for this tab.');
+      if (!state.compatibilityReady && hostPrefersTabCapture()) {
+        chrome.runtime.sendMessage({ type: 'CAPTURE_NEEDED' }).catch(() => {});
+        showCaptureSetup();
+      }
+      toast(state.compatibilityReady ? 'Ready — Clippah is ON for this tab. You can make as many clips as you want.' : 'Capture access ended for this tab.');
       return;
     }
 
@@ -653,6 +663,10 @@
     const captureState = await chrome.runtime.sendMessage({ type: 'GET_CAPTURE_STATE' })
       .catch(() => ({ ready: false }));
     state.compatibilityReady = !!captureState?.ready;
+    if (!state.compatibilityReady && hostPrefersTabCapture()) {
+      chrome.runtime.sendMessage({ type: 'CAPTURE_NEEDED' }).catch(() => {});
+      showCaptureSetup();
+    }
     requestAnimationFrame(placeUi);
   })();
 })();
