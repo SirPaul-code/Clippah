@@ -7,139 +7,164 @@
   <link rel="stylesheet" href="editor.css">
 </head>
 <body>
-  <header class="appbar">
-    <div class="brand"><div class="brand-mark">C</div><div><strong>Clippah</strong><span>Studio</span></div></div>
-    <div class="project-head"><div id="clip-title" class="project-title">No clip selected</div><div id="clip-meta" class="project-meta">Local-first browser editor</div></div>
-    <div class="top-actions"><span id="export-status" class="export-status"></span><button id="settings" class="icon-button" data-tip="Open Clippah settings and agent bridge">Settings</button><button id="export" class="export-button">Export sequence</button></div>
-  </header>
+<header class="appbar">
+  <div class="brand"><div class="brand-mark">C</div><div><strong>Clippah</strong><span>Studio</span></div></div>
+  <div class="project-head"><div id="project-title" class="project-title">Untitled project</div><div id="project-meta" class="project-meta">Local-first browser video editor</div></div>
+  <div class="top-actions"><span id="export-status" class="export-status"></span><button id="settings" class="ghost">Settings</button><button id="export" class="primary">Export video</button></div>
+</header>
 
-  <main class="layout">
-    <aside class="library">
-      <div class="panel-heading big"><span>Library</span><button id="refresh" class="text-button" data-tip="Reload clips from local browser storage">Refresh</button></div>
-      <div class="library-tools">
-        <select id="folder-filter" aria-label="Folder filter" data-tip="Show all clips or only one folder"><option value="all">All clips</option></select>
-        <button id="organize" class="subtle-button" data-tip="Select multiple clips and move them into folders">Organize</button>
-      </div>
-      <div id="bulk-bar" class="bulk-bar" hidden>
-        <strong id="bulk-count">0 selected</strong>
-        <select id="move-folder" aria-label="Move selected clips"><option value="">Move to…</option></select>
-        <button id="new-folder" data-tip="Create a new folder and move the selected clips into it">+ Folder</button>
-        <button id="bulk-done">Done</button>
-      </div>
-      <div id="clip-list" class="clip-list"></div>
-    </aside>
-
-    <section id="workspace" class="workspace empty">
-      <div id="empty-state" class="empty-state">
-        <div class="empty-icon">C</div>
-        <h1>Your clips appear here</h1>
-        <p>Clip from a browser video. Studio refreshes automatically as soon as a new recording finishes.</p>
-      </div>
-
-      <div id="editor" class="editor" hidden>
-        <div class="canvas-area">
-          <div id="stage" class="stage ratio-16-9">
-            <canvas id="preview"></canvas>
-            <div class="canvas-hint"><span>Drag to reframe</span><span>Wheel to zoom</span><span id="auto-hint">Auto keyframe on</span></div>
-          </div>
-        </div>
-
-        <div class="timeline-panel">
-          <div class="sequence-row">
-            <button id="prepend-clip" class="add-clip" data-tip="Add another clip before the first clip">+</button>
-            <div id="sequence-strip" class="sequence-strip" aria-label="Clip sequence"></div>
-            <button id="append-clip" class="add-clip" data-tip="Add another clip after the last clip">+</button>
-          </div>
-          <div class="transport-row">
-            <button id="play" class="play-button" title="Play / pause">Play</button>
-            <span id="time" class="timecode">0:00.000</span>
-            <div class="timeline-wrap">
-              <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Sequence timeline">
-              <div id="keyframe-rail" class="keyframe-rail"></div>
-            </div>
-            <span id="duration" class="timecode muted-time">0:00.000</span>
-          </div>
-          <div class="timeline-legend"><span><i class="diamond"></i> viewport keyframe</span><span class="spacer"></span><span id="timeline-note">Move the frame at a new time to animate it.</span></div>
-        </div>
-      </div>
-    </section>
-
-    <aside id="inspector" class="inspector" hidden>
-      <div class="inspector-tabs"><button data-tab="frame" class="active">Frame</button><button data-tab="captions">Captions</button></div>
-
-      <div id="panel-frame" class="inspector-panel active">
-        <div class="panel-heading big"><span>Frame</span><button id="reset-frame" class="text-button" data-tip="Reset position and zoom at the current playhead">Reset</button></div>
-
-        <section class="inspect-section">
-          <div class="label-row"><label class="label">Aspect ratio</label><span class="help" data-tip="Choose the final canvas shape. 9:16 is ideal for Shorts, Reels and TikTok.">?</span></div>
-          <div id="aspect" class="ratio-grid">
-            <button data-aspect="16:9" class="ratio-card active"><i class="ratio-icon landscape"></i><span>16:9</span></button>
-            <button data-aspect="9:16" class="ratio-card"><i class="ratio-icon portrait"></i><span>9:16</span></button>
-            <button data-aspect="1:1" class="ratio-card"><i class="ratio-icon square"></i><span>1:1</span></button>
-          </div>
-        </section>
-
-        <section class="inspect-section">
-          <div class="label-row"><label class="label">Fill</label><span class="help" data-tip="Crop fills the frame. Blur and Mirror keep the full source visible with a background. Fit adds empty space where needed.">?</span></div>
-          <div id="background-mode" class="segmented">
-            <button data-mode="crop" class="active">Crop</button>
-            <button data-mode="blur">Blur</button>
-            <button data-mode="mirror">Mirror</button>
-            <button data-mode="fit">Fit</button>
-          </div>
-        </section>
-
-        <section class="inspect-section">
-          <div class="label-row"><label class="label">Zoom</label><span id="zoom-value" class="value">100%</span></div>
-          <input id="zoom" class="wide-range" type="range" min="1" max="3" step="0.01" value="1">
-        </section>
-
-        <div class="section-divider"></div>
-        <div class="panel-heading big compact"><span>Motion</span><span id="keyframe-count" class="counter">0</span></div>
-
-        <section class="inspect-section motion-section">
-          <div class="toggle-row"><div><strong>Auto keyframe</strong><span>Move or zoom at a new time and Clippah creates the motion point automatically.</span></div><label class="switch"><input id="auto-keyframe" type="checkbox" checked><i></i></label></div>
-          <div class="motion-actions"><button id="add-keyframe" data-tip="Save the current viewport at this exact playhead time">Add keyframe</button><button id="remove-keyframe" data-tip="Remove the keyframe closest to the playhead">Remove nearest</button></div>
-          <button id="clear-keyframes" class="wide danger-ghost" data-tip="Remove every viewport motion point from the current clip">Clear all motion</button>
-        </section>
-      </div>
-
-      <div id="panel-captions" class="inspector-panel">
-        <div class="panel-heading big"><span>Captions</span><span id="caption-count" class="counter">0</span></div>
-        <section class="inspect-section">
-          <div class="toggle-row"><div><strong>Burn captions</strong><span>Draw captions into preview and exported video.</span></div><label class="switch"><input id="captions-enabled" type="checkbox"><i></i></label></div>
-        </section>
-        <section class="inspect-section">
-          <div class="label-row"><label class="label">Size</label><span id="caption-size-value" class="value">100%</span></div>
-          <input id="caption-size" class="wide-range" type="range" min="0.7" max="1.6" step="0.05" value="1">
-        </section>
-        <section class="inspect-section caption-source">
-          <div class="source-line"><span>Source</span><strong id="caption-source">No captions</strong></div>
-          <p class="section-help">Clippah can capture subtitles already shown by the video/player in any language. You can also import SRT or VTT for free.</p>
-          <div class="stack-actions"><button id="import-captions">Import SRT / VTT</button><button id="export-captions">Export SRT</button></div>
-          <input id="caption-file" type="file" accept=".srt,.vtt,text/vtt" hidden>
-        </section>
-      </div>
-
-      <div class="section-divider"></div>
-      <section class="inspect-section source-section">
-        <div class="source-line"><span>Source</span><strong id="source-mode">Local capture</strong></div>
-        <div class="source-line"><span>Stored</span><strong id="source-size">--</strong></div>
-        <button id="download-original" class="wide subtle">Download captured source</button>
-        <button id="delete" class="wide danger-ghost">Delete active clip</button>
-      </section>
-    </aside>
-  </main>
-
-  <div id="picker" class="modal-backdrop" hidden>
-    <div class="picker-card">
-      <div class="picker-head"><div><strong>Add clip</strong><span>Choose a clip from your local library</span></div><button id="picker-close">×</button></div>
-      <div id="picker-list" class="picker-list"></div>
+<main class="layout">
+  <aside class="library-panel">
+    <div class="panel-title-row"><div><span class="eyebrow">MEDIA</span><h2>Library</h2></div><button id="refresh" class="icon-action" data-tip="Refresh local clip library">↻</button></div>
+    <p class="panel-hint">Drag any clip directly onto the V1 track. Drop between clips to insert it there.</p>
+    <div class="library-actions">
+      <select id="folder-filter" aria-label="Folder filter"><option value="all">All clips</option></select>
+      <button id="organize" class="small">Organize</button>
     </div>
-  </div>
+    <div id="bulk-bar" class="bulk-bar" hidden>
+      <strong id="bulk-count">0 selected</strong>
+      <select id="move-folder"><option value="">Move to folder…</option></select>
+      <button id="new-folder">+ New folder</button>
+      <button id="bulk-done">Done</button>
+    </div>
+    <div id="clip-list" class="clip-list"></div>
+  </aside>
 
-  <div id="toast" class="studio-toast"></div>
-  <video id="source" playsinline preload="metadata"></video>
-  <script src="editor.js"></script>
+  <section class="studio-column">
+    <div class="viewer-toolbar">
+      <div class="tool-group" role="toolbar" aria-label="Edit tools">
+        <button id="tool-select" class="tool active" data-tool="select" data-tip="Select clips and move the viewport (V)">↖ <span>Select</span></button>
+        <button id="tool-cut" class="tool" data-tool="cut" data-tip="Click a video segment to split it (C)">✂ <span>Cut</span></button>
+        <button id="add-text" class="tool" data-tip="Add a text layer at the playhead (T)">T <span>Text</span></button>
+      </div>
+      <div class="viewer-help">Tip: split twice, then press <kbd>Delete</kbd> to remove the middle.</div>
+    </div>
+
+    <div id="viewer-shell" class="viewer-shell empty">
+      <div id="empty-state" class="empty-state">
+        <div class="empty-logo">C</div>
+        <h1>Drop a clip on the timeline</h1>
+        <p>Record clips in the browser, then drag them from Library to the V1 track below.</p>
+      </div>
+      <div id="stage" class="stage ratio-16-9" hidden>
+        <canvas id="preview"></canvas>
+        <div id="viewer-guides" class="viewer-guides"></div>
+        <div class="canvas-help"><span>Drag = reframe</span><span>Wheel = zoom</span><span id="auto-hint">Auto keyframe on</span></div>
+      </div>
+    </div>
+
+    <section class="timeline-section">
+      <div class="transport-bar">
+        <button id="play" class="play">▶</button>
+        <span id="time" class="timecode">0:00.000</span>
+        <button id="split-at-playhead" class="transport-action" data-tip="Split selected segment at playhead">Split</button>
+        <button id="delete-segment" class="transport-action danger" data-tip="Delete selected timeline segment">Delete</button>
+        <div class="transport-spacer"></div>
+        <span id="duration" class="timecode muted">0:00.000</span>
+      </div>
+
+      <div id="timeline" class="timeline" tabindex="0">
+        <div id="ruler" class="ruler"></div>
+        <div class="track-row video-row">
+          <div class="track-label"><strong>V1</strong><span>Video</span></div>
+          <div id="video-track" class="track video-track" data-dropzone="clips"></div>
+        </div>
+        <div class="track-row audio-row">
+          <div class="track-label"><strong>A1</strong><span>Audio</span></div>
+          <div class="track audio-track"><canvas id="waveform"></canvas><div id="audio-fades" class="audio-fades"></div></div>
+        </div>
+        <div class="track-row text-row">
+          <div class="track-label"><strong>T</strong><span>Text</span></div>
+          <div id="text-track" class="track overlay-track"></div>
+        </div>
+        <div class="track-row caption-row">
+          <div class="track-label"><strong>CC</strong><span>Captions</span></div>
+          <div id="caption-track" class="track overlay-track"></div>
+        </div>
+        <div id="playhead" class="playhead"><i></i></div>
+      </div>
+      <div class="timeline-footer"><span>Drag clips to reorder · Right-click a segment for actions · <kbd>Space</kbd> play/pause · <kbd>C</kbd> cut · <kbd>Delete</kbd> remove</span></div>
+    </section>
+  </section>
+
+  <aside class="inspector">
+    <div class="inspector-tabs">
+      <button data-panel="clip" class="active">Clip</button>
+      <button data-panel="motion">Motion</button>
+      <button data-panel="text">Text</button>
+      <button data-panel="captions">Captions</button>
+    </div>
+
+    <div id="panel-clip" class="inspector-panel active">
+      <div class="panel-title-row"><div><span class="eyebrow">SELECTED SEGMENT</span><h2>Clip</h2></div><span id="clip-index" class="pill">—</span></div>
+      <div id="no-segment" class="empty-inspector">Select a V1 timeline segment to edit speed, fades and audio.</div>
+      <div id="clip-controls" hidden>
+        <section class="control-section">
+          <div class="label-row"><label>Speed</label><strong id="speed-value">1.00×</strong></div>
+          <input id="speed" type="range" min="0.25" max="3" step="0.05" value="1">
+          <p class="help-copy">Changes playback speed without changing your original captured clip.</p>
+        </section>
+        <section class="control-section two-col">
+          <div><div class="label-row"><label>Video fade in</label><span id="video-fade-in-value">0.0s</span></div><input id="video-fade-in" type="range" min="0" max="5" step="0.1" value="0"></div>
+          <div><div class="label-row"><label>Video fade out</label><span id="video-fade-out-value">0.0s</span></div><input id="video-fade-out" type="range" min="0" max="5" step="0.1" value="0"></div>
+        </section>
+        <section class="control-section">
+          <div class="label-row"><label>Volume</label><strong id="volume-value">100%</strong></div>
+          <input id="volume" type="range" min="0" max="2" step="0.01" value="1">
+        </section>
+        <section class="control-section two-col">
+          <div><div class="label-row"><label>Audio fade in</label><span id="audio-fade-in-value">0.0s</span></div><input id="audio-fade-in" type="range" min="0" max="5" step="0.1" value="0"></div>
+          <div><div class="label-row"><label>Audio fade out</label><span id="audio-fade-out-value">0.0s</span></div><input id="audio-fade-out" type="range" min="0" max="5" step="0.1" value="0"></div>
+        </section>
+        <div class="action-grid"><button id="clip-split">Split at playhead</button><button id="clip-remove" class="danger-ghost">Remove segment</button></div>
+      </div>
+    </div>
+
+    <div id="panel-motion" class="inspector-panel">
+      <div class="panel-title-row"><div><span class="eyebrow">OUTPUT</span><h2>Frame & motion</h2></div><button id="reset-frame" class="text-action">Reset</button></div>
+      <section class="control-section">
+        <label>Aspect ratio</label>
+        <div id="aspect" class="ratio-grid"><button data-aspect="16:9" class="active"><i class="landscape"></i>16:9</button><button data-aspect="9:16"><i class="portrait"></i>9:16</button><button data-aspect="1:1"><i class="square"></i>1:1</button></div>
+      </section>
+      <section class="control-section"><label>Fill</label><div id="fill" class="segmented"><button data-fill="crop" class="active">Crop</button><button data-fill="blur">Blur</button><button data-fill="mirror">Mirror</button><button data-fill="fit">Fit</button></div></section>
+      <section class="control-section"><div class="label-row"><label>Zoom</label><strong id="zoom-value">100%</strong></div><input id="zoom" type="range" min="1" max="3" step="0.01" value="1"></section>
+      <section class="control-section"><div class="toggle-row"><div><strong>Auto keyframe</strong><span>Moving or zooming at a new time creates a motion point.</span></div><label class="switch"><input id="auto-keyframe" type="checkbox" checked><i></i></label></div></section>
+      <section class="control-section"><div class="keyframe-head"><label>Viewport keyframes</label><span id="keyframe-count" class="pill">0</span></div><div id="keyframe-list" class="keyframe-list"></div><div class="action-grid"><button id="add-keyframe">Add at playhead</button><button id="remove-keyframe">Remove nearest</button></div><button id="clear-keyframes" class="wide danger-ghost">Clear all motion</button></section>
+    </div>
+
+    <div id="panel-text" class="inspector-panel">
+      <div class="panel-title-row"><div><span class="eyebrow">OVERLAYS</span><h2>Text</h2></div><button id="new-text" class="text-action">+ Add</button></div>
+      <div id="no-text" class="empty-inspector">Add text at the playhead. Select a text block on the T track to edit it.</div>
+      <div id="text-controls" hidden>
+        <section class="control-section"><label>Content</label><textarea id="text-content" rows="3" placeholder="Your text"></textarea></section>
+        <section class="control-section"><div class="label-row"><label>Font</label><button id="load-fonts" class="tiny">Load PC fonts</button></div><select id="font-family"></select><p id="font-hint" class="help-copy">Uses browser-accessible system fonts. “Load PC fonts” asks Chrome for installed fonts when supported.</p></section>
+        <section class="control-section two-col"><div><label>Size</label><input id="font-size" type="number" min="12" max="240" value="64"></div><div><label>Color</label><input id="font-color" type="color" value="#ffffff"></div></section>
+        <section class="control-section two-col"><div><label>Start</label><input id="text-start" type="number" min="0" step="0.05"></div><div><label>End</label><input id="text-end" type="number" min="0" step="0.05"></div></section>
+        <section class="control-section two-col"><div><label>Fade in</label><input id="text-fade-in" type="number" min="0" max="5" step="0.1" value="0.2"></div><div><label>Fade out</label><input id="text-fade-out" type="number" min="0" max="5" step="0.1" value="0.2"></div></section>
+        <p class="help-copy">While this text is selected, drag directly on the preview to position it.</p>
+        <button id="delete-text" class="wide danger-ghost">Delete text layer</button>
+      </div>
+    </div>
+
+    <div id="panel-captions" class="inspector-panel">
+      <div class="panel-title-row"><div><span class="eyebrow">SUBTITLES</span><h2>Captions</h2></div><span id="caption-count" class="pill">0</span></div>
+      <section class="control-section"><div class="toggle-row"><div><strong>Burn captions</strong><span>Render subtitles into preview and exported video.</span></div><label class="switch"><input id="captions-enabled" type="checkbox"><i></i></label></div></section>
+      <section class="control-section"><div class="label-row"><label>Caption size</label><strong id="caption-size-value">100%</strong></div><input id="caption-size" type="range" min="0.7" max="1.8" step="0.05" value="1"></section>
+      <section class="control-section"><div class="source-line"><span>Source</span><strong id="caption-source">No captions</strong></div><p class="help-copy">Source captions captured from the player are free and language-agnostic. You can also import SRT/VTT.</p><div class="action-grid"><button id="import-captions">Import SRT / VTT</button><button id="export-captions">Export SRT</button></div><input id="caption-file" type="file" accept=".srt,.vtt,text/vtt" hidden></section>
+    </div>
+  </aside>
+</main>
+
+<div id="picker" class="modal-backdrop" hidden>
+  <div class="picker-card" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="picker-head"><div><strong id="picker-title">Add clip</strong><span>Choose from Library, or drag a clip directly onto V1.</span></div><button id="picker-close" aria-label="Close">×</button></div>
+    <div id="picker-list" class="picker-list"></div>
+  </div>
+</div>
+
+<div id="context-menu" class="context-menu" hidden><button data-action="split">Split at playhead</button><button data-action="duplicate">Duplicate segment</button><button data-action="delete" class="danger-text">Delete segment</button></div>
+<div id="toast" class="toast"></div>
+<video id="source" playsinline preload="metadata"></video>
+<script src="editor.js"></script>
 </body>
 </html>
