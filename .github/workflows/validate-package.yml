@@ -47,8 +47,21 @@ jobs:
           chmod +x scripts/package.sh
           ./scripts/package.sh
 
+      - name: Package full downloadable bundle
+        shell: bash
+        run: |
+          version="${{ steps.meta.outputs.version }}"
+          zip -qr "dist/Clippah-v${version}-full.zip" .             -x ".git/*"                "dist/*"                "mcp/node_modules/*"                ".staging/*"
+
       - uses: actions/upload-artifact@v4
         with:
           name: Clippah-v${{ steps.meta.outputs.version }}
           path: dist/Clippah-v${{ steps.meta.outputs.version }}.zip
+          if-no-files-found: error
+
+      - name: Upload full bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clippah-v${{ steps.meta.outputs.version }}-full
+          path: dist/Clippah-v${{ steps.meta.outputs.version }}-full.zip
           if-no-files-found: error
