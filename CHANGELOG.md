@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.0 — 2026-10-06
+
+### Studio
+- Replaced the simple sequence strip with a multi-track editing timeline.
+- Fixed the Add clip modal hidden-state/X issue.
+- Added Library → V1 drag and drop and segment reordering.
+- Added Cut tool, split-at-playhead, Delete/Backspace and right-click Split/Duplicate/Delete.
+- Added A1 waveform rendering.
+- Added per-segment speed, volume, video fades and audio fades.
+- Added timed text layers, text drag positioning and Local Font Access integration.
+- Added T and CC tracks.
+- Kept per-segment social reframe/motion keyframes.
+- Added sequence export with speed, fades, motion, text, captions and audio.
+- Studio Library now refreshes when both direct and tab-captured clips finish.
+
+### Capture UX
+- Added explicit one-click YouTube/tabCapture onboarding.
+- Toolbar badge shows 1 when capture permission is needed and ON when ready.
+- The one toolbar click is required once per tab, not per clip.
+
+### MCP
+- Added timeline insert/reorder/select/split/delete tools.
+- Added speed/volume/fade editing.
+- Added fill controls.
+- Added text and captions tools.
+- Added sequence export.
+- Added zero-command MCP launchers for Windows and Unix.
+
 ## 0.3.0 — 2026-10-06
 
 ### Studio
