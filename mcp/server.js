@@ -139,7 +139,7 @@ async function invokeImages(method, params = {}) {
 }
 
 function createServer() {
-  const server = new McpServer({ name: 'clippah', version: '0.3.0' });
+  const server = new McpServer({ name: 'clippah', version: '0.4.0' });
 
   server.registerTool('clippah_status', {
     title: 'Clippah browser status',
@@ -222,10 +222,112 @@ function createServer() {
   }, async () => invoke('studio_clear_motion'));
 
   server.registerTool('clippah_append_clip', {
-    title: 'Append clip to Studio sequence',
-    description: 'Append a local clip ID from clippah_list_clips to the current Studio sequence.',
+    title: 'Append clip to Studio timeline',
+    description: 'Append a local clip ID from clippah_list_clips to the end of the V1 timeline.',
     inputSchema: { clipId: z.string().min(1) }
-  }, async ({ clipId }) => invoke('studio_append_clip', { clipId }));
+  }, async ({ clipId }) => invoke('studio_insert_clip', { clipId }));
+
+  server.registerTool('clippah_insert_clip', {
+    title: 'Insert clip into timeline',
+    description: 'Insert a local clip at a zero-based timeline index.',
+    inputSchema: { clipId: z.string().min(1), index: z.number().int().nonnegative().optional() }
+  }, async args => invoke('studio_insert_clip', args));
+
+  server.registerTool('clippah_move_segment', {
+    title: 'Move timeline segment',
+    description: 'Reorder one V1 timeline segment by moving it to a zero-based index.',
+    inputSchema: { segmentId: z.string().min(1), index: z.number().int().nonnegative() }
+  }, async args => invoke('studio_move_segment', args));
+
+  server.registerTool('clippah_select_segment', {
+    title: 'Select timeline segment',
+    description: 'Select a V1 timeline segment. Optionally seek to its start.',
+    inputSchema: { segmentId: z.string().min(1), seek: z.boolean().optional() }
+  }, async args => invoke('studio_select_segment', args));
+
+  server.registerTool('clippah_split_segment', {
+    title: 'Split timeline segment',
+    description: 'Split a V1 segment either at a global sequence time or an exact source time. Omit segmentId to use the selected segment.',
+    inputSchema: {
+      segmentId: z.string().optional(),
+      time: z.number().nonnegative().optional(),
+      sourceTime: z.number().nonnegative().optional()
+    }
+  }, async args => invoke('studio_split', args));
+
+  server.registerTool('clippah_delete_segment', {
+    title: 'Delete timeline segment',
+    description: 'Remove a segment from the current Studio timeline without deleting the source clip from the Library.',
+    inputSchema: { segmentId: z.string().optional() }
+  }, async args => invoke('studio_delete_segment', args));
+
+  server.registerTool('clippah_set_segment', {
+    title: 'Set clip speed, volume and fades',
+    description: 'Edit one timeline segment: playback speed, volume, video fade-in/out and audio fade-in/out, all in seconds where applicable.',
+    inputSchema: {
+      segmentId: z.string().optional(),
+      speed: z.number().min(0.25).max(3).optional(),
+      volume: z.number().min(0).max(2).optional(),
+      videoFadeIn: z.number().nonnegative().optional(),
+      videoFadeOut: z.number().nonnegative().optional(),
+      audioFadeIn: z.number().nonnegative().optional(),
+      audioFadeOut: z.number().nonnegative().optional()
+    }
+  }, async args => invoke('studio_set_segment', args));
+
+  server.registerTool('clippah_set_fill', {
+    title: 'Set frame fill mode',
+    description: 'Set output fill mode to crop, blur, mirror or fit.',
+    inputSchema: { fill: z.enum(['crop','blur','mirror','fit']) }
+  }, async ({ fill }) => invoke('studio_set_fill', { fill }));
+
+  server.registerTool('clippah_add_text', {
+    title: 'Add text overlay',
+    description: 'Add a text overlay to the active segment at the current or requested global time.',
+    inputSchema: { text: z.string().optional(), time: z.number().nonnegative().optional() }
+  }, async args => invoke('studio_add_text', args));
+
+  server.registerTool('clippah_update_text', {
+    title: 'Update text overlay',
+    description: 'Update any editable text-layer fields such as text, font, size, color, x/y position, start/end time or fade values.',
+    inputSchema: {
+      segmentId: z.string().optional(),
+      textId: z.string().min(1),
+      patch: z.record(z.string(), z.any())
+    }
+  }, async args => invoke('studio_update_text', args));
+
+  server.registerTool('clippah_delete_text', {
+    title: 'Delete text overlay',
+    description: 'Delete one text layer from a timeline segment.',
+    inputSchema: { segmentId: z.string().optional(), textId: z.string().min(1) }
+  }, async args => invoke('studio_delete_text', args));
+
+  server.registerTool('clippah_get_captions', {
+    title: 'Read captions',
+    description: 'Read caption cues from the selected or specified segment.',
+    inputSchema: { segmentId: z.string().optional() },
+    annotations: { readOnlyHint: true }
+  }, async args => invoke('studio_get_captions', args));
+
+  server.registerTool('clippah_set_captions', {
+    title: 'Replace captions',
+    description: 'Replace caption cues on a segment. Cue times are seconds relative to that segment source range.',
+    inputSchema: {
+      segmentId: z.string().optional(),
+      cues: z.array(z.object({
+        id: z.string().optional(),
+        start: z.number().nonnegative(),
+        end: z.number().nonnegative(),
+        text: z.string()
+      }))
+    }
+  }, async args => invoke('studio_set_captions', args));
+
+  server.registerTool('clippah_export_sequence', {
+    title: 'Export Studio sequence',
+    description: 'Start local rendering/export of the current Studio sequence.'
+  }, async () => invoke('studio_export', {}, 30000));
 
   return server;
 }
