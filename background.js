@@ -229,10 +229,20 @@ async function tellStudio(command, params = {}) {
 async function setCaptureBadge(tabId, ready) {
   try {
     await chrome.action.setBadgeText({ tabId, text: ready ? 'ON' : '' });
+    await chrome.action.setTitle({ tabId, title: ready ? 'Clippah capture enabled for this tab' : 'Clippah — click once to enable capture for this tab' });
     if (ready) {
       await chrome.action.setBadgeBackgroundColor({ tabId, color: '#45d483' });
       await chrome.action.setBadgeTextColor({ tabId, color: '#111216' });
     }
+  } catch (_) {}
+}
+
+async function setCaptureNeeded(tabId) {
+  try {
+    await chrome.action.setBadgeText({ tabId, text: '1' });
+    await chrome.action.setBadgeBackgroundColor({ tabId, color: '#7b68ff' });
+    await chrome.action.setBadgeTextColor({ tabId, color: '#ffffff' });
+    await chrome.action.setTitle({ tabId, title: 'Clippah — click once to enable YouTube capture' });
   } catch (_) {}
 }
 
@@ -294,7 +304,20 @@ async function routeAgentCommand(method, params = {}) {
     ['studio_move_viewport', 'studio_move_viewport'],
     ['studio_add_keyframe', 'studio_add_keyframe'],
     ['studio_clear_motion', 'studio_clear_motion'],
-    ['studio_append_clip', 'studio_append_clip']
+    ['studio_append_clip', 'studio_append_clip'],
+    ['studio_set_fill', 'studio_set_fill'],
+    ['studio_select_segment', 'studio_select_segment'],
+    ['studio_insert_clip', 'studio_insert_clip'],
+    ['studio_move_segment', 'studio_move_segment'],
+    ['studio_split', 'studio_split'],
+    ['studio_delete_segment', 'studio_delete_segment'],
+    ['studio_set_segment', 'studio_set_segment'],
+    ['studio_add_text', 'studio_add_text'],
+    ['studio_update_text', 'studio_update_text'],
+    ['studio_delete_text', 'studio_delete_text'],
+    ['studio_set_captions', 'studio_set_captions'],
+    ['studio_get_captions', 'studio_get_captions'],
+    ['studio_export', 'studio_export']
   ]);
   if (studioMethods.has(method)) return tellStudio(studioMethods.get(method), params);
 
@@ -406,6 +429,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target === 'offscreen') return;
   const tabId = sender.tab?.id ?? message.tabId;
 
+  if (message.type === 'CAPTURE_NEEDED') {
+    if (tabId) setCaptureNeeded(tabId);
+    sendResponse({ ok: true });
+    return;
+  }
+
   if (message.type === 'GET_CAPTURE_STATE') {
     (async () => {
       try { sendResponse({ ok: true, ready: tabId ? await captured(tabId) : false }); }
@@ -438,6 +467,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           tabId,
           meta: message.meta
         });
+        if (message.type === 'SEGMENT_STOP' && result?.ok && result.clipId) {
+          await broadcastLibraryChanged(result.clipId);
+        }
         sendResponse(result || { ok: true });
       } catch (error) {
         sendResponse({ ok: false, error: error?.message || String(error) });
