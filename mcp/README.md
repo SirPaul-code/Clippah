@@ -109,3 +109,25 @@ This lets a vision-capable agent inspect a frame, locate a face/object, move the
 - Token is stored in `~/.clippah/mcp-token`.
 - Video is not uploaded to a Clippah cloud service.
 - Frame pixels leave the extension only when an explicitly connected MCP agent requests them.
+
+
+## v0.5 editing parity
+
+Additional MCP tools:
+
+- \`clippah_set_motion_mode\` — static vs animated viewport edits
+- \`clippah_add_overlay\` — text / emoji / image overlay
+- \`clippah_update_overlay\`
+- \`clippah_delete_overlay\`
+- \`clippah_set_overlay\`
+- \`clippah_move_overlay\` — move by output pixels
+- \`clippah_set_overlay_motion_mode\`
+- \`clippah_add_overlay_keyframe\`
+- \`clippah_clear_overlay_motion\`
+- \`clippah_library\`
+- \`clippah_create_folder\`
+- \`clippah_move_clips\`
+- \`clippah_move_folder\`
+- \`clippah_delete_folder\`
+
+An agent can therefore inspect frames, move the camera viewport, animate any overlay object, adjust segment speed/volume/fades, and organize the local media tree.

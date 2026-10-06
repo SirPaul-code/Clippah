@@ -139,7 +139,7 @@ async function invokeImages(method, params = {}) {
 }
 
 function createServer() {
-  const server = new McpServer({ name: 'clippah', version: '0.4.0' });
+  const server = new McpServer({ name: 'clippah', version: '0.5.0' });
 
   server.registerTool('clippah_status', {
     title: 'Clippah browser status',
@@ -323,6 +323,114 @@ function createServer() {
       }))
     }
   }, async args => invoke('studio_set_captions', args));
+
+  server.registerTool('clippah_set_motion_mode', {
+    title: 'Set viewport edit mode',
+    description: 'Choose static viewport editing or animate mode. Static changes the whole clip; animate records viewport keyframes at the playhead.',
+    inputSchema: { mode: z.enum(['static','animate']) }
+  }, async ({ mode }) => invoke('studio_set_motion_mode', { mode }));
+
+  server.registerTool('clippah_add_overlay', {
+    title: 'Add overlay object',
+    description: 'Add a text, emoji or image/sticker overlay to the active segment.',
+    inputSchema: {
+      kind: z.enum(['text','emoji','image']),
+      text: z.string().optional(),
+      dataUrl: z.string().optional(),
+      time: z.number().nonnegative().optional(),
+      patch: z.record(z.string(), z.any()).optional()
+    }
+  }, async args => invoke('studio_add_overlay', args));
+
+  server.registerTool('clippah_update_overlay', {
+    title: 'Update overlay object',
+    description: 'Update overlay content, timing, font, z-order, image source or base transform.',
+    inputSchema: {
+      segmentId: z.string().optional(),
+      overlayId: z.string().min(1),
+      patch: z.record(z.string(), z.any())
+    }
+  }, async args => invoke('studio_update_overlay', args));
+
+  server.registerTool('clippah_delete_overlay', {
+    title: 'Delete overlay object',
+    description: 'Delete one text, emoji or image overlay.',
+    inputSchema: { segmentId: z.string().optional(), overlayId: z.string().min(1) }
+  }, async args => invoke('studio_delete_overlay', args));
+
+  server.registerTool('clippah_set_overlay', {
+    title: 'Set overlay transform',
+    description: 'Set an overlay position, scale, rotation and opacity. The selected overlay motion mode decides whether this is static or keyframed.',
+    inputSchema: {
+      segmentId: z.string().optional(),
+      overlayId: z.string().optional(),
+      time: z.number().nonnegative().optional(),
+      x: z.number().min(0).max(1).optional(),
+      y: z.number().min(0).max(1).optional(),
+      scale: z.number().min(0.1).max(8).optional(),
+      rotation: z.number().optional(),
+      opacity: z.number().min(0).max(1).optional()
+    }
+  }, async args => invoke('studio_set_overlay', args));
+
+  server.registerTool('clippah_move_overlay', {
+    title: 'Move overlay by output pixels',
+    description: 'Move an overlay by dx/dy pixels in the current output canvas. Useful after inspecting a rendered frame.',
+    inputSchema: {
+      segmentId: z.string().optional(),
+      overlayId: z.string().optional(),
+      time: z.number().nonnegative().optional(),
+      dx: z.number(),
+      dy: z.number()
+    }
+  }, async args => invoke('studio_move_overlay', args));
+
+  server.registerTool('clippah_set_overlay_motion_mode', {
+    title: 'Set overlay motion mode',
+    description: 'Choose whether an overlay is edited statically or animated with transform keyframes.',
+    inputSchema: { overlayId: z.string().optional(), mode: z.enum(['static','animate']) }
+  }, async args => invoke('studio_set_overlay_motion_mode', args));
+
+  server.registerTool('clippah_add_overlay_keyframe', {
+    title: 'Add overlay keyframe',
+    description: 'Store the selected overlay transform at the current or requested playhead time.',
+    inputSchema: { time: z.number().nonnegative().optional() }
+  }, async args => invoke('studio_add_overlay_keyframe', args));
+
+  server.registerTool('clippah_clear_overlay_motion', {
+    title: 'Clear overlay motion',
+    description: 'Remove all transform keyframes from the selected overlay while keeping its current transform static.'
+  }, async () => invoke('studio_clear_overlay_motion'));
+
+  server.registerTool('clippah_library', {
+    title: 'Read Clippah Library',
+    description: 'Read the local folder tree and clip metadata.',
+    annotations: { readOnlyHint: true }
+  }, async () => invoke('studio_list_library'));
+
+  server.registerTool('clippah_create_folder', {
+    title: 'Create Library folder',
+    description: 'Create a root folder or nested subfolder in Clippah Library.',
+    inputSchema: { name: z.string().min(1), parentId: z.string().optional() }
+  }, async args => invoke('studio_create_folder', args));
+
+  server.registerTool('clippah_move_clips', {
+    title: 'Move clips to folder',
+    description: 'Move one or more local clip IDs into a folder. Omit folderId to move them to Library root.',
+    inputSchema: { clipIds: z.array(z.string().min(1)).min(1), folderId: z.string().optional() }
+  }, async args => invoke('studio_move_clips', args));
+
+  server.registerTool('clippah_move_folder', {
+    title: 'Move Library folder',
+    description: 'Re-parent one Library folder under another folder or move it to root.',
+    inputSchema: { folderId: z.string().min(1), parentId: z.string().optional() }
+  }, async args => invoke('studio_move_folder', args));
+
+  server.registerTool('clippah_delete_folder', {
+    title: 'Delete Library folder',
+    description: 'Delete a folder while moving its direct clips/subfolders one level up.',
+    inputSchema: { folderId: z.string().min(1) }
+  }, async args => invoke('studio_delete_folder', args));
 
   server.registerTool('clippah_export_sequence', {
     title: 'Export Studio sequence',

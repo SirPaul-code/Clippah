@@ -1,5 +1,20 @@
 # Clippah roadmap
 
+## v0.5 — direct manipulation + object animation — implemented
+
+- explicit Static / Animate viewport mode
+- static viewport changes preserve relative existing motion
+- draggable video/audio fade handles directly on the timeline
+- Explorer-style nested Library folders
+- drag clips into folders and folders into folders
+- right-click Move To / New subfolder / Rename / Delete
+- text, emoji and image/sticker overlays
+- transform keyframes per overlay object
+- object position / scale / rotation / opacity / z-order
+- overlay frame inspection and control through MCP
+- Library folder management through MCP
+
+
 ## v0.4 — lightweight browser NLE — implemented
 
 - fixed Add clip modal hidden-state bug
