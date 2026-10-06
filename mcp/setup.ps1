@@ -50,6 +50,6 @@ Write-Host "2. Paste the token"
 Write-Host "3. Save"
 Write-Host ""
 Write-Host "For an MCP-capable agent, use this launcher as the MCP command:" -ForegroundColor White
-Write-Host (Join-Path $Here "start.cmd") -ForegroundColor Cyan
+Write-Host (Join-Path $Here "clippah-mcp.cmd") -ForegroundColor Cyan
 Write-Host ""
 Read-Host "Press Enter to close"
