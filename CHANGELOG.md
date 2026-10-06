@@ -1,37 +1,45 @@
 # Changelog
 
-## 0.2.0 — 2026-10-06
-
-### Capture
-- Replaced hidden-canvas compatibility recording with raw tab MediaRecorder.
-- Moved player crop from background recording into Studio.
-- Added direct media-element capture where both video and audio tracks are exposed.
-- Added best-effort cursor suppression for compatibility capture.
-- Kept one compatibility capture session alive across multiple clips in the same tab.
-- Added wall-clock recorded duration metadata and WebM duration fallback handling.
-
-### In-player UX
-- Replaced ARM / MARK ONLY terminology with state-driven creator UX.
-- New compact floating dock.
-- Start clip / Finish clip primary action.
-- Recording elapsed time.
-- Keyboard start/finish/cancel.
-- One-time per-tab capture explanation.
+## 0.3.0 — 2026-10-06
 
 ### Studio
-- New library + canvas + compact timeline + inspector layout.
-- 16:9 / 9:16 / 1:1.
-- Crop / Blur / Mirror / Fit.
-- Drag reframe and wheel zoom.
-- Auto keyframes.
-- Automatic neutral baseline when first motion edit happens later than time 0.
-- Keyframe diamonds on timeline.
-- Persistent per-clip edit state.
 
-### Agent foundation
-- Added Settings page for loopback agent bridge.
-- Added optional local MCP server with pairing token.
-- Added status/play/pause/seek/clip/marker/list/open-Studio tools.
+- Larger, more readable creator UI.
+- Context hints/tooltips across the editing controls.
+- Sequence builder with + controls before, after and between clips.
+- Sequence playback and local sequence export.
+- Automatic Library refresh when a new clip finishes recording.
+- Clip folders, multi-select organization and Move to folder / New folder.
+- Clear all motion remains explicit and visible.
 
-### Compatibility
-- Development minimum raised to Chromium 148 for structured-clone extension messaging.
+### Captions
+
+- Captures visible/source subtitles during clipping when available.
+- Stores caption cues on the clip.
+- SRT/VTT import.
+- Caption burn-in preview/export.
+- SRT export.
+
+### MCP / agent
+
+- Exact rendered frame retrieval as MCP image content.
+- Up to six sampled frames per call.
+- Studio status/geometry.
+- Pixel viewport movement.
+- Exact normalized viewport/zoom controls.
+- Agent keyframe controls.
+- Aspect ratio controls.
+- Append clip to sequence.
+- One-click Windows MCP setup scripts.
+
+## 0.2.0
+
+- Fixed frozen-frame capture architecture by recording the tab MediaStream directly.
+- New minimal player dock and Studio UI.
+- Auto keyframe behavior.
+- Mirror background.
+- Initial MCP bridge.
+
+## 0.1.0
+
+- Initial working capture/editor prototype.

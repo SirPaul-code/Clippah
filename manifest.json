@@ -1,13 +1,23 @@
 {
   "manifest_version": 3,
   "name": "Clippah",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Clip and reframe video directly where you watch it.",
-  "minimum_chrome_version": "148",
+  "minimum_chrome_version": "116",
   "message_serialization": "structured_clone",
-  "permissions": ["activeTab", "storage", "tabCapture", "offscreen", "unlimitedStorage"],
-  "host_permissions": ["<all_urls>"],
-  "background": { "service_worker": "background.js" },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabCapture",
+    "offscreen",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Enable Clippah capture for this tab",
     "default_icon": {
@@ -25,7 +35,10 @@
   },
   "commands": {
     "_execute_action": {
-      "suggested_key": { "default": "Ctrl+Shift+K", "mac": "Command+Shift+K" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
       "description": "Enable or disable compatibility capture for the current tab"
     }
   },
@@ -33,9 +46,15 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*"
   },
-  "content_scripts": [{
-    "matches": ["<all_urls>"],
-    "js": ["content.js"],
-    "run_at": "document_idle"
-  }]
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }

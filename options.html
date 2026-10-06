@@ -8,17 +8,26 @@
 </head>
 <body>
   <main class="page">
-    <header><div class="mark">C</div><div><h1>Clippah Settings</h1><p>Local capture, creator workflow and agent bridge.</p></div></header>
+    <header><div class="mark">C</div><div><h1>Clippah Settings</h1><p>Local capture, creator workflow and optional agent bridge.</p></div></header>
+
+    <section class="card setup-card">
+      <span class="eyebrow">ONE-TIME AGENT SETUP</span>
+      <h2>No npm knowledge required</h2>
+      <p>Open the downloaded Clippah folder, open <code>mcp</code>, then double-click <strong>setup.cmd</strong>. It installs what is missing, creates the private pairing token and copies it to your clipboard.</p>
+      <div class="steps"><span>1 · Run <b>mcp\setup.cmd</b></span><span>2 · Paste token below</span><span>3 · Enable bridge</span></div>
+    </section>
+
     <section class="card">
-      <div class="card-head"><div><h2>Agent Bridge</h2><p>Expose safe Clippah controls to the local MCP server so an agent can inspect and control the active video workflow.</p></div><label class="switch"><input id="enabled" type="checkbox"><i></i></label></div>
-      <div class="field"><label for="url">Bridge URL</label><input id="url" value="ws://127.0.0.1:47281/extension" spellcheck="false"></div>
-      <div class="field"><label for="token">Pairing token</label><input id="token" type="password" placeholder="Paste the token printed by the Clippah MCP server" spellcheck="false"></div>
+      <div class="card-head"><div><h2>Agent Bridge</h2><p>Lets a local MCP agent request rendered frames, inspect scene geometry, move the viewport by pixels, create keyframes and control clipping.</p></div><label class="switch"><input id="enabled" type="checkbox"><i></i></label></div>
+      <div class="field"><label for="url">Local bridge URL</label><input id="url" value="ws://127.0.0.1:47281/extension" spellcheck="false"><small>Keep the default unless you deliberately changed the local MCP port.</small></div>
+      <div class="field"><label for="token">Pairing token</label><input id="token" type="password" placeholder="Paste the token copied by setup.cmd" spellcheck="false"><small>The token prevents random local pages/processes from controlling Clippah.</small></div>
       <div class="status-row"><span id="dot" class="dot"></span><span id="status">Disabled</span><span class="spacer"></span><button id="save">Save & reconnect</button></div>
     </section>
+
     <section class="card compact">
-      <h2>How pairing works</h2>
-      <ol><li>Open the <code>mcp</code> folder from the repository.</li><li>Run <code>npm install</code> and then <code>npm start</code>.</li><li>The server prints a local pairing token. Paste it above.</li><li>Enable Agent Bridge and save.</li></ol>
-      <p class="note">The bridge binds to loopback only. The MCP process can request playback, seeking, clip start/finish, marker state, clip metadata and opening Studio.</p>
+      <h2>What an agent can do</h2>
+      <div class="tool-grid"><span>Get exact rendered frame</span><span>Sample multiple frames</span><span>Move viewport by pixels</span><span>Set zoom / aspect</span><span>Create keyframes</span><span>Append clips to sequence</span></div>
+      <p class="note">The bridge listens only on <code>127.0.0.1</code>. Video remains local unless you explicitly ask an external agent to inspect returned frame images.</p>
     </section>
   </main>
   <script src="options.js"></script>

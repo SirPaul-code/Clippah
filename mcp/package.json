@@ -1,10 +1,13 @@
 {
   "name": "@clippah/mcp-server",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=20" },
-  "scripts": { "start": "node server.js" },
+  "scripts": {
+    "start": "node server.js",
+    "token": "node server.js --print-token"
+  },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.0",
     "ws": "^8.18.0",

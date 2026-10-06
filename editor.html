@@ -10,32 +10,135 @@
   <header class="appbar">
     <div class="brand"><div class="brand-mark">C</div><div><strong>Clippah</strong><span>Studio</span></div></div>
     <div class="project-head"><div id="clip-title" class="project-title">No clip selected</div><div id="clip-meta" class="project-meta">Local-first browser editor</div></div>
-    <div class="top-actions"><span id="export-status" class="export-status"></span><button id="settings" class="icon-button">Settings</button><button id="export" class="export-button">Export clip</button></div>
+    <div class="top-actions"><span id="export-status" class="export-status"></span><button id="settings" class="icon-button" data-tip="Open Clippah settings and agent bridge">Settings</button><button id="export" class="export-button">Export sequence</button></div>
   </header>
+
   <main class="layout">
-    <aside class="library"><div class="panel-heading"><span>Clips</span><button id="refresh" class="text-button">Refresh</button></div><div id="clip-list" class="clip-list"></div></aside>
+    <aside class="library">
+      <div class="panel-heading big"><span>Library</span><button id="refresh" class="text-button" data-tip="Reload clips from local browser storage">Refresh</button></div>
+      <div class="library-tools">
+        <select id="folder-filter" aria-label="Folder filter" data-tip="Show all clips or only one folder"><option value="all">All clips</option></select>
+        <button id="organize" class="subtle-button" data-tip="Select multiple clips and move them into folders">Organize</button>
+      </div>
+      <div id="bulk-bar" class="bulk-bar" hidden>
+        <strong id="bulk-count">0 selected</strong>
+        <select id="move-folder" aria-label="Move selected clips"><option value="">Move to…</option></select>
+        <button id="new-folder" data-tip="Create a new folder and move the selected clips into it">+ Folder</button>
+        <button id="bulk-done">Done</button>
+      </div>
+      <div id="clip-list" class="clip-list"></div>
+    </aside>
+
     <section id="workspace" class="workspace empty">
-      <div id="empty-state" class="empty-state"><div class="empty-icon">C</div><h1>Your clips appear here</h1><p>Start and finish a clip directly on a video page. Clippah keeps the source local and opens it here for reframing.</p></div>
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon">C</div>
+        <h1>Your clips appear here</h1>
+        <p>Clip from a browser video. Studio refreshes automatically as soon as a new recording finishes.</p>
+      </div>
+
       <div id="editor" class="editor" hidden>
-        <div class="canvas-area"><div id="stage" class="stage ratio-16-9"><canvas id="preview"></canvas><div class="canvas-hint"><span>Drag to reframe</span><span>Wheel to zoom</span><span id="auto-hint">Auto keyframe on</span></div></div></div>
+        <div class="canvas-area">
+          <div id="stage" class="stage ratio-16-9">
+            <canvas id="preview"></canvas>
+            <div class="canvas-hint"><span>Drag to reframe</span><span>Wheel to zoom</span><span id="auto-hint">Auto keyframe on</span></div>
+          </div>
+        </div>
+
         <div class="timeline-panel">
-          <div class="transport-row"><button id="play" class="play-button">Play</button><span id="time" class="timecode">0:00.000</span><div class="timeline-wrap"><input id="scrub" type="range" min="0" max="1000" value="0"><div id="keyframe-rail" class="keyframe-rail"></div></div><span id="duration" class="timecode muted-time">0:00.000</span></div>
+          <div class="sequence-row">
+            <button id="prepend-clip" class="add-clip" data-tip="Add another clip before the first clip">+</button>
+            <div id="sequence-strip" class="sequence-strip" aria-label="Clip sequence"></div>
+            <button id="append-clip" class="add-clip" data-tip="Add another clip after the last clip">+</button>
+          </div>
+          <div class="transport-row">
+            <button id="play" class="play-button" title="Play / pause">Play</button>
+            <span id="time" class="timecode">0:00.000</span>
+            <div class="timeline-wrap">
+              <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Sequence timeline">
+              <div id="keyframe-rail" class="keyframe-rail"></div>
+            </div>
+            <span id="duration" class="timecode muted-time">0:00.000</span>
+          </div>
           <div class="timeline-legend"><span><i class="diamond"></i> viewport keyframe</span><span class="spacer"></span><span id="timeline-note">Move the frame at a new time to animate it.</span></div>
         </div>
       </div>
     </section>
+
     <aside id="inspector" class="inspector" hidden>
-      <div class="panel-heading"><span>Frame</span><button id="reset-frame" class="text-button">Reset</button></div>
-      <section class="inspect-section"><label class="label">Aspect ratio</label><div id="aspect" class="ratio-grid"><button data-aspect="16:9" class="ratio-card active"><i class="ratio-icon landscape"></i><span>16:9</span></button><button data-aspect="9:16" class="ratio-card"><i class="ratio-icon portrait"></i><span>9:16</span></button><button data-aspect="1:1" class="ratio-card"><i class="ratio-icon square"></i><span>1:1</span></button></div></section>
-      <section class="inspect-section"><label class="label">Fill</label><div id="background-mode" class="segmented"><button data-mode="crop" class="active">Crop</button><button data-mode="blur">Blur</button><button data-mode="mirror">Mirror</button><button data-mode="fit">Fit</button></div></section>
-      <section class="inspect-section"><div class="label-row"><label class="label">Zoom</label><span id="zoom-value" class="value">100%</span></div><input id="zoom" class="wide-range" type="range" min="1" max="3" step="0.01" value="1"></section>
+      <div class="inspector-tabs"><button data-tab="frame" class="active">Frame</button><button data-tab="captions">Captions</button></div>
+
+      <div id="panel-frame" class="inspector-panel active">
+        <div class="panel-heading big"><span>Frame</span><button id="reset-frame" class="text-button" data-tip="Reset position and zoom at the current playhead">Reset</button></div>
+
+        <section class="inspect-section">
+          <div class="label-row"><label class="label">Aspect ratio</label><span class="help" data-tip="Choose the final canvas shape. 9:16 is ideal for Shorts, Reels and TikTok.">?</span></div>
+          <div id="aspect" class="ratio-grid">
+            <button data-aspect="16:9" class="ratio-card active"><i class="ratio-icon landscape"></i><span>16:9</span></button>
+            <button data-aspect="9:16" class="ratio-card"><i class="ratio-icon portrait"></i><span>9:16</span></button>
+            <button data-aspect="1:1" class="ratio-card"><i class="ratio-icon square"></i><span>1:1</span></button>
+          </div>
+        </section>
+
+        <section class="inspect-section">
+          <div class="label-row"><label class="label">Fill</label><span class="help" data-tip="Crop fills the frame. Blur and Mirror keep the full source visible with a background. Fit adds empty space where needed.">?</span></div>
+          <div id="background-mode" class="segmented">
+            <button data-mode="crop" class="active">Crop</button>
+            <button data-mode="blur">Blur</button>
+            <button data-mode="mirror">Mirror</button>
+            <button data-mode="fit">Fit</button>
+          </div>
+        </section>
+
+        <section class="inspect-section">
+          <div class="label-row"><label class="label">Zoom</label><span id="zoom-value" class="value">100%</span></div>
+          <input id="zoom" class="wide-range" type="range" min="1" max="3" step="0.01" value="1">
+        </section>
+
+        <div class="section-divider"></div>
+        <div class="panel-heading big compact"><span>Motion</span><span id="keyframe-count" class="counter">0</span></div>
+
+        <section class="inspect-section motion-section">
+          <div class="toggle-row"><div><strong>Auto keyframe</strong><span>Move or zoom at a new time and Clippah creates the motion point automatically.</span></div><label class="switch"><input id="auto-keyframe" type="checkbox" checked><i></i></label></div>
+          <div class="motion-actions"><button id="add-keyframe" data-tip="Save the current viewport at this exact playhead time">Add keyframe</button><button id="remove-keyframe" data-tip="Remove the keyframe closest to the playhead">Remove nearest</button></div>
+          <button id="clear-keyframes" class="wide danger-ghost" data-tip="Remove every viewport motion point from the current clip">Clear all motion</button>
+        </section>
+      </div>
+
+      <div id="panel-captions" class="inspector-panel">
+        <div class="panel-heading big"><span>Captions</span><span id="caption-count" class="counter">0</span></div>
+        <section class="inspect-section">
+          <div class="toggle-row"><div><strong>Burn captions</strong><span>Draw captions into preview and exported video.</span></div><label class="switch"><input id="captions-enabled" type="checkbox"><i></i></label></div>
+        </section>
+        <section class="inspect-section">
+          <div class="label-row"><label class="label">Size</label><span id="caption-size-value" class="value">100%</span></div>
+          <input id="caption-size" class="wide-range" type="range" min="0.7" max="1.6" step="0.05" value="1">
+        </section>
+        <section class="inspect-section caption-source">
+          <div class="source-line"><span>Source</span><strong id="caption-source">No captions</strong></div>
+          <p class="section-help">Clippah can capture subtitles already shown by the video/player in any language. You can also import SRT or VTT for free.</p>
+          <div class="stack-actions"><button id="import-captions">Import SRT / VTT</button><button id="export-captions">Export SRT</button></div>
+          <input id="caption-file" type="file" accept=".srt,.vtt,text/vtt" hidden>
+        </section>
+      </div>
+
       <div class="section-divider"></div>
-      <div class="panel-heading compact"><span>Motion</span><span id="keyframe-count" class="counter">0</span></div>
-      <section class="inspect-section motion-section"><div class="toggle-row"><div><strong>Auto keyframe</strong><span>Move or zoom at a new playhead position and Clippah creates the motion point.</span></div><label class="switch"><input id="auto-keyframe" type="checkbox" checked><i></i></label></div><div class="motion-actions"><button id="add-keyframe">Add at playhead</button><button id="remove-keyframe">Remove nearest</button></div><button id="clear-keyframes" class="wide danger-ghost">Clear motion</button></section>
-      <div class="section-divider"></div>
-      <section class="inspect-section source-section"><div class="source-line"><span>Source</span><strong id="source-mode">Local capture</strong></div><div class="source-line"><span>Stored</span><strong id="source-size">--</strong></div><button id="download-original" class="wide subtle">Download captured source</button><button id="delete" class="wide danger-ghost">Delete clip</button></section>
+      <section class="inspect-section source-section">
+        <div class="source-line"><span>Source</span><strong id="source-mode">Local capture</strong></div>
+        <div class="source-line"><span>Stored</span><strong id="source-size">--</strong></div>
+        <button id="download-original" class="wide subtle">Download captured source</button>
+        <button id="delete" class="wide danger-ghost">Delete active clip</button>
+      </section>
     </aside>
   </main>
+
+  <div id="picker" class="modal-backdrop" hidden>
+    <div class="picker-card">
+      <div class="picker-head"><div><strong>Add clip</strong><span>Choose a clip from your local library</span></div><button id="picker-close">×</button></div>
+      <div id="picker-list" class="picker-list"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="studio-toast"></div>
   <video id="source" playsinline preload="metadata"></video>
   <script src="editor.js"></script>
 </body>

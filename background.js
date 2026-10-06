@@ -1,6 +1,6 @@
 const OFFSCREEN_URL = 'offscreen.html';
 const DB_NAME = 'clippah';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let creatingOffscreen = null;
 let agentSocket = null;
 let agentReconnectTimer = null;
@@ -21,6 +21,10 @@ function openDb() {
       }
       if (!db.objectStoreNames.contains('sessions')) {
         db.createObjectStore('sessions', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('folders')) {
+        const folders = db.createObjectStore('folders', { keyPath: 'id' });
+        folders.createIndex('name', 'name');
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -138,6 +142,7 @@ async function directStop(sessionId, mimeType, meta) {
     db.close();
   }
 
+  await broadcastLibraryChanged(clipId);
   return { ok: true, clipId, size: blob.size };
 }
 
@@ -198,6 +203,29 @@ async function tell(tabId, message) {
   }
 }
 
+async function broadcastLibraryChanged(clipId = null) {
+  try { await chrome.runtime.sendMessage({ type: 'CLIP_LIBRARY_CHANGED', clipId }); } catch (_) {}
+}
+
+async function studioTab() {
+  const url = chrome.runtime.getURL('editor.html');
+  const tabs = await chrome.tabs.query({});
+  return tabs.find(tab => tab.url === url || tab.url?.startsWith(url + '#') || tab.url?.startsWith(url + '?')) || null;
+}
+
+async function tellStudio(command, params = {}) {
+  let tab = await studioTab();
+  if (!tab?.id) {
+    tab = await chrome.tabs.create({ url: chrome.runtime.getURL('editor.html') });
+    await new Promise(resolve => setTimeout(resolve, 650));
+  }
+  try {
+    return await chrome.runtime.sendMessage({ type: 'AGENT_STUDIO_COMMAND', command, params });
+  } catch (error) {
+    return { ok: false, error: error?.message || 'Clippah Studio is not ready yet.' };
+  }
+}
+
 async function setCaptureBadge(tabId, ready) {
   try {
     await chrome.action.setBadgeText({ tabId, text: ready ? 'ON' : '' });
@@ -255,6 +283,20 @@ async function routeAgentCommand(method, params = {}) {
     const tab = await chrome.tabs.create({ url: chrome.runtime.getURL('editor.html') });
     return { ok: true, tabId: tab.id };
   }
+
+  const studioMethods = new Map([
+    ['studio_status', 'studio_status'],
+    ['studio_get_frame', 'studio_get_frame'],
+    ['studio_get_frames', 'studio_get_frames'],
+    ['studio_seek', 'studio_seek'],
+    ['studio_set_aspect', 'studio_set_aspect'],
+    ['studio_set_viewport', 'studio_set_viewport'],
+    ['studio_move_viewport', 'studio_move_viewport'],
+    ['studio_add_keyframe', 'studio_add_keyframe'],
+    ['studio_clear_motion', 'studio_clear_motion'],
+    ['studio_append_clip', 'studio_append_clip']
+  ]);
+  if (studioMethods.has(method)) return tellStudio(studioMethods.get(method), params);
 
   const tab = await activeTab();
   if (!tab?.id) return { ok: false, error: 'No active browser tab.' };

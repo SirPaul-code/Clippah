@@ -1,5 +1,5 @@
 const DB_NAME = 'clippah';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const captures = new Map();
 const recordings = new Map();
 
@@ -23,6 +23,10 @@ function openDb() {
       }
       if (!db.objectStoreNames.contains('sessions')) {
         db.createObjectStore('sessions', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('folders')) {
+        const folders = db.createObjectStore('folders', { keyPath: 'id' });
+        folders.createIndex('name', 'name');
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -167,6 +171,7 @@ async function stop(tabId, stopMeta = {}) {
   };
 
   await saveClip(record);
+  try { await chrome.runtime.sendMessage({ type: 'CLIP_LIBRARY_CHANGED', clipId: record.id }); } catch (_) {}
   return { ok: true, clipId: record.id, size: record.size, recordedDuration };
 }
 
