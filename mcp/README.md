@@ -1,31 +1,34 @@
-# Clippah MCP / Agent bridge
+# Clippah MCP / Agent bridge — v0.4
 
-Clippah exposes a local MCP server so a vision-capable agent can inspect exact rendered frames and edit the same viewport/keyframes a human edits in Studio.
+Clippah exposes the same editing model used by Studio through a local MCP server. A multimodal agent can inspect exact rendered frames, understand source/output geometry, build the timeline, cut clips, change speed/audio/fades, add text/captions and control motion keyframes.
 
-## Windows: one-click setup
+## Windows — no npm knowledge required
 
-You do **not** need to know npm.
+### One-time pairing
 
-1. Open the `mcp` folder.
+1. Open the downloaded `Clippah\mcp` folder.
 2. Double-click **`setup.cmd`**.
-3. The setup installs Node.js LTS with `winget` if needed, installs the MCP dependencies, creates a private pairing token and copies the token to the clipboard.
-4. In Chrome open **Clippah -> Settings -> Agent Bridge**.
-5. Enable Agent Bridge, paste the token, Save.
+3. It installs Node.js LTS with `winget` if required, installs the local MCP dependencies, creates a private pairing token and copies it to the clipboard.
+4. In Chrome open **Clippah → Settings → Agent Bridge**.
+5. Enable the bridge, paste the token and click **Save & reconnect**.
 
-For an MCP client/agent, use **`mcp/start.cmd`** as the MCP command. The launcher installs missing dependencies automatically and then starts the stdio MCP server.
+### MCP command for an agent
 
-## macOS / Linux
+Point the MCP client at:
 
-```bash
-cd mcp
-./setup.sh
+```text
+Clippah\mcp\clippah-mcp.cmd
 ```
 
-Then use `node /absolute/path/to/Clippah/mcp/server.js` as the MCP command.
+The launcher checks/install missing npm dependencies itself before starting the stdio MCP server. The user never needs to type `npm start`.
 
-## What the agent can do
+macOS/Linux equivalent:
 
-Browser tools:
+```text
+Clippah/mcp/clippah-mcp.sh
+```
+
+## Browser tools
 
 - `clippah_status`
 - `clippah_play`
@@ -38,25 +41,71 @@ Browser tools:
 - `clippah_list_clips`
 - `clippah_open_studio`
 
-Studio / visual editing tools:
+## Studio / NLE tools
 
-- `clippah_studio_status` — current sequence, active clip, viewport, keyframes, captions.
-- `clippah_get_frame` — returns the exact rendered output frame as an MCP image plus source/output geometry.
-- `clippah_get_frames` — up to six exact frames at requested sequence times.
-- `clippah_studio_seek` — move the Studio playhead.
-- `clippah_set_aspect` — 16:9 / 9:16 / 1:1.
-- `clippah_set_viewport` — set normalized viewport center/zoom and keyframe it.
-- `clippah_move_viewport` — move the crop window by output pixels and keyframe it.
+### Vision and scene understanding
+
+- `clippah_studio_status` — whole sequence, segment IDs, timings, fades, speed, motion/text/caption state.
+- `clippah_get_frame` — exact rendered frame + output/source/viewport geometry.
+- `clippah_get_frames` — sample up to six rendered frames at exact global sequence times.
+
+This lets a vision-capable agent inspect a frame, locate a face/object, move the crop by pixels, inspect again and create motion keyframes iteratively.
+
+### Timeline
+
+- `clippah_insert_clip`
+- `clippah_append_clip`
+- `clippah_move_segment`
+- `clippah_select_segment`
+- `clippah_split_segment`
+- `clippah_delete_segment`
+- `clippah_studio_seek`
+
+### Clip/audio properties
+
+- `clippah_set_segment`
+  - speed
+  - volume
+  - video fade in/out
+  - audio fade in/out
+- `clippah_set_aspect`
+- `clippah_set_fill`
+
+### Motion / crop
+
+- `clippah_set_viewport`
+- `clippah_move_viewport`
 - `clippah_add_keyframe`
 - `clippah_clear_motion`
-- `clippah_append_clip`
 
-This means an agent can request a frame, visually locate a face/person/object, move the viewport 20 px / 100 px / etc., request the resulting frame again, and iteratively create motion keyframes.
+### Text
 
-## Security model
+- `clippah_add_text`
+- `clippah_update_text`
+- `clippah_delete_text`
 
-- Browser bridge binds only to `127.0.0.1`.
-- A random persistent token is required.
-- The token is stored in `~/.clippah/mcp-token`.
+### Captions
+
+- `clippah_get_captions`
+- `clippah_set_captions`
+
+### Export
+
+- `clippah_export_sequence`
+
+## Example agent loop for reframing
+
+1. `clippah_get_frame({time: 3.0})`
+2. Vision model sees the speaker is 160 px right of desired center.
+3. `clippah_move_viewport({dx: 160, dy: 0, time: 3.0})`
+4. `clippah_get_frame({time: 3.0})` again.
+5. Repeat if needed.
+6. Sample a later frame and add the next keyframe.
+
+## Security
+
+- Bridge binds only to `127.0.0.1`.
+- Random persistent token is required.
+- Token is stored in `~/.clippah/mcp-token`.
 - Video is not uploaded to a Clippah cloud service.
-- `clippah_get_frame(s)` returns rendered frames only when an agent explicitly asks for them.
+- Frame pixels leave the extension only when an explicitly connected MCP agent requests them.
