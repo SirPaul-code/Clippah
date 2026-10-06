@@ -15,19 +15,23 @@
 
 <main class="layout">
   <aside class="library-panel">
-    <div class="panel-title-row"><div><span class="eyebrow">MEDIA</span><h2>Library</h2></div><button id="refresh" class="icon-action" data-tip="Refresh local clip library">↻</button></div>
-    <p class="panel-hint">Drag any clip directly onto the V1 track. Drop between clips to insert it there.</p>
-    <div class="library-actions">
-      <select id="folder-filter" aria-label="Folder filter"><option value="all">All clips</option></select>
-      <button id="organize" class="small">Organize</button>
+    <div class="panel-title-row">
+      <div><span class="eyebrow">MEDIA</span><h2>Library</h2></div>
+      <div class="library-head-actions">
+        <button id="library-new-folder" class="icon-action" data-tip="Create a folder at the selected location">+ Folder</button>
+        <button id="refresh" class="icon-action" data-tip="Refresh local clip library">↻</button>
+      </div>
     </div>
-    <div id="bulk-bar" class="bulk-bar" hidden>
-      <strong id="bulk-count">0 selected</strong>
-      <select id="move-folder"><option value="">Move to folder…</option></select>
-      <button id="new-folder">+ New folder</button>
-      <button id="bulk-done">Done</button>
+    <p class="panel-hint">Explorer-style library. Drag clips into folders, between folders, or directly onto V1.</p>
+    <input id="library-search" class="library-search" type="search" placeholder="Search clips and folders…" autocomplete="off">
+    <div class="explorer-legend"><span>Right-click clips/folders for actions</span><span>Ctrl-click selects multiple clips</span></div>
+    <div id="clip-list" class="library-tree" role="tree"></div>
+
+    <div hidden aria-hidden="true">
+      <select id="folder-filter"><option value="all">All clips</option></select>
+      <button id="organize"></button>
+      <div id="bulk-bar"><span id="bulk-count"></span><select id="move-folder"><option value=""></option></select><button id="new-folder"></button><button id="bulk-done"></button></div>
     </div>
-    <div id="clip-list" class="clip-list"></div>
   </aside>
 
   <section class="studio-column">
@@ -35,7 +39,7 @@
       <div class="tool-group" role="toolbar" aria-label="Edit tools">
         <button id="tool-select" class="tool active" data-tool="select" data-tip="Select clips and move the viewport (V)">↖ <span>Select</span></button>
         <button id="tool-cut" class="tool" data-tool="cut" data-tip="Click a video segment to split it (C)">✂ <span>Cut</span></button>
-        <button id="add-text" class="tool" data-tip="Add a text layer at the playhead (T)">T <span>Text</span></button>
+        <button id="add-text" class="tool" data-tip="Add a text layer at the playhead (T)">T <span>Text</span></button><button id="add-emoji" class="tool" data-tip="Add an emoji overlay at the playhead">☺ <span>Emoji</span></button><button id="add-image" class="tool" data-tip="Add an image or sticker overlay at the playhead">▧ <span>Image</span></button>
       </div>
       <div class="viewer-help">Tip: split twice, then press <kbd>Delete</kbd> to remove the middle.</div>
     </div>
@@ -74,7 +78,7 @@
           <div class="track audio-track"><canvas id="waveform"></canvas><div id="audio-fades" class="audio-fades"></div></div>
         </div>
         <div class="track-row text-row">
-          <div class="track-label"><strong>T</strong><span>Text</span></div>
+          <div class="track-label"><strong>O1</strong><span>Overlays</span></div>
           <div id="text-track" class="track overlay-track"></div>
         </div>
         <div class="track-row caption-row">
@@ -91,7 +95,7 @@
     <div class="inspector-tabs">
       <button data-panel="clip" class="active">Clip</button>
       <button data-panel="motion">Motion</button>
-      <button data-panel="text">Text</button>
+      <button data-panel="text">Overlays</button>
       <button data-panel="captions">Captions</button>
     </div>
 
@@ -128,22 +132,88 @@
       </section>
       <section class="control-section"><label>Fill</label><div id="fill" class="segmented"><button data-fill="crop" class="active">Crop</button><button data-fill="blur">Blur</button><button data-fill="mirror">Mirror</button><button data-fill="fit">Fit</button></div></section>
       <section class="control-section"><div class="label-row"><label>Zoom</label><strong id="zoom-value">100%</strong></div><input id="zoom" type="range" min="1" max="3" step="0.01" value="1"></section>
-      <section class="control-section"><div class="toggle-row"><div><strong>Auto keyframe</strong><span>Moving or zooming at a new time creates a motion point.</span></div><label class="switch"><input id="auto-keyframe" type="checkbox" checked><i></i></label></div></section>
+      <section class="control-section">
+        <div class="label-row"><label>Viewport edit mode</label><span class="help-dot" data-tip="Static changes the whole clip. Animate records position/zoom at the current playhead.">?</span></div>
+        <div id="motion-mode" class="mode-toggle">
+          <button data-mode="static">Static</button>
+          <button data-mode="animate" class="active">Animate</button>
+        </div>
+        <p id="motion-mode-help" class="help-copy">Animate: drag or zoom at different times to create viewport keyframes.</p>
+        <input id="auto-keyframe" type="checkbox" checked hidden>
+      </section>
       <section class="control-section"><div class="keyframe-head"><label>Viewport keyframes</label><span id="keyframe-count" class="pill">0</span></div><div id="keyframe-list" class="keyframe-list"></div><div class="action-grid"><button id="add-keyframe">Add at playhead</button><button id="remove-keyframe">Remove nearest</button></div><button id="clear-keyframes" class="wide danger-ghost">Clear all motion</button></section>
     </div>
 
     <div id="panel-text" class="inspector-panel">
-      <div class="panel-title-row"><div><span class="eyebrow">OVERLAYS</span><h2>Text</h2></div><button id="new-text" class="text-action">+ Add</button></div>
-      <div id="no-text" class="empty-inspector">Add text at the playhead. Select a text block on the T track to edit it.</div>
-      <div id="text-controls" hidden>
-        <section class="control-section"><label>Content</label><textarea id="text-content" rows="3" placeholder="Your text"></textarea></section>
-        <section class="control-section"><div class="label-row"><label>Font</label><button id="load-fonts" class="tiny">Load PC fonts</button></div><select id="font-family"></select><p id="font-hint" class="help-copy">Uses browser-accessible system fonts. “Load PC fonts” asks Chrome for installed fonts when supported.</p></section>
-        <section class="control-section two-col"><div><label>Size</label><input id="font-size" type="number" min="12" max="240" value="64"></div><div><label>Color</label><input id="font-color" type="color" value="#ffffff"></div></section>
-        <section class="control-section two-col"><div><label>Start</label><input id="text-start" type="number" min="0" step="0.05"></div><div><label>End</label><input id="text-end" type="number" min="0" step="0.05"></div></section>
-        <section class="control-section two-col"><div><label>Fade in</label><input id="text-fade-in" type="number" min="0" max="5" step="0.1" value="0.2"></div><div><label>Fade out</label><input id="text-fade-out" type="number" min="0" max="5" step="0.1" value="0.2"></div></section>
-        <p class="help-copy">While this text is selected, drag directly on the preview to position it.</p>
-        <button id="delete-text" class="wide danger-ghost">Delete text layer</button>
+      <div class="panel-title-row">
+        <div><span class="eyebrow">OVERLAYS</span><h2>Objects</h2></div>
+        <div class="overlay-add-actions">
+          <button id="new-text" class="text-action">+ Text</button>
+          <button id="new-emoji" class="text-action">+ Emoji</button>
+          <button id="new-image" class="text-action">+ Image</button>
+        </div>
       </div>
+      <div id="no-text" class="empty-inspector">Add text, emoji or an image. Every overlay can be positioned, scaled, faded and keyframed independently.</div>
+      <div id="text-controls" hidden>
+        <section class="control-section">
+          <div class="source-line"><span>Object type</span><strong id="overlay-kind">Text</strong></div>
+        </section>
+
+        <section id="overlay-content-section" class="control-section">
+          <label id="overlay-content-label">Content</label>
+          <textarea id="text-content" rows="3" placeholder="Your text"></textarea>
+          <div id="emoji-quick" class="emoji-quick" hidden>
+            <button>😀</button><button>😂</button><button>❤️</button><button>🔥</button><button>👀</button><button>✅</button><button>⭐</button><button>👉</button><button>💥</button><button>🎯</button>
+          </div>
+        </section>
+
+        <section id="text-font-section" class="control-section">
+          <div class="label-row"><label>Font</label><button id="load-fonts" class="tiny">Load PC fonts</button></div>
+          <select id="font-family"></select>
+          <p id="font-hint" class="help-copy">Uses browser-accessible system fonts. Load PC fonts asks Chrome for installed fonts when supported.</p>
+        </section>
+
+        <section id="image-section" class="control-section" hidden>
+          <button id="change-image" class="wide">Replace image</button>
+        </section>
+
+        <section class="control-section three-col">
+          <div><label>Size</label><input id="font-size" type="number" min="12" max="320" value="64"></div>
+          <div><label>Color</label><input id="font-color" type="color" value="#ffffff"></div>
+          <div><label>Opacity</label><input id="overlay-opacity" type="number" min="0" max="1" step="0.05" value="1"></div>
+        </section>
+
+        <section class="control-section three-col">
+          <div><label>Scale</label><input id="overlay-scale" type="number" min="0.1" max="8" step="0.05" value="1"></div>
+          <div><label>Rotation</label><input id="overlay-rotation" type="number" min="-360" max="360" step="1" value="0"></div>
+          <div><label>Layer</label><input id="overlay-z" type="number" min="0" max="99" step="1" value="10"></div>
+        </section>
+
+        <section class="control-section two-col">
+          <div><label>Start</label><input id="text-start" type="number" min="0" step="0.05"></div>
+          <div><label>End</label><input id="text-end" type="number" min="0" step="0.05"></div>
+        </section>
+        <section class="control-section two-col">
+          <div><label>Fade in</label><input id="text-fade-in" type="number" min="0" max="10" step="0.1" value="0.2"></div>
+          <div><label>Fade out</label><input id="text-fade-out" type="number" min="0" max="10" step="0.1" value="0.2"></div>
+        </section>
+
+        <section class="control-section">
+          <div class="label-row"><label>Object motion</label><span id="object-keyframe-count" class="pill">0</span></div>
+          <div id="object-motion-mode" class="mode-toggle">
+            <button data-mode="static" class="active">Static</button>
+            <button data-mode="animate">Animate</button>
+          </div>
+          <p class="help-copy">Static moves/scales the object for its whole lifetime. Animate records object transform keyframes at the playhead.</p>
+          <div id="object-keyframe-list" class="keyframe-list"></div>
+          <div class="action-grid"><button id="add-object-keyframe">Add keyframe</button><button id="remove-object-keyframe">Remove nearest</button></div>
+          <button id="clear-object-motion" class="wide danger-ghost">Clear object motion</button>
+        </section>
+
+        <p class="help-copy">Select this object on O1, then drag it directly on the preview. Mouse wheel scales the selected object.</p>
+        <button id="delete-text" class="wide danger-ghost">Delete overlay</button>
+      </div>
+      <input id="overlay-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
     </div>
 
     <div id="panel-captions" class="inspector-panel">
@@ -162,6 +232,7 @@
   </div>
 </div>
 
+<div id="library-context-menu" class="context-menu library-context-menu" hidden></div>
 <div id="context-menu" class="context-menu" hidden><button data-action="split">Split at playhead</button><button data-action="duplicate">Duplicate segment</button><button data-action="delete" class="danger-text">Delete segment</button></div>
 <div id="toast" class="toast"></div>
 <video id="source" playsinline preload="metadata"></video>

@@ -1,4 +1,4 @@
-# Clippah 0.4
+# Clippah 0.5
 
 **Clip where you watch. Finish in a lightweight local editor.**
 
@@ -188,4 +188,15 @@ See [mcp/README.md](mcp/README.md).
 
 ## Version
 
-**0.4.0**
+**0.5.0**
+
+
+## Studio 0.5 additions
+
+- explicit **Static / Animate** viewport editing mode, so normal zoom/reframe does not accidentally create motion
+- direct draggable fade handles on the beginning/end of V1 and A1 segments
+- Explorer-style hierarchical Library with nested folders, drag-to-folder and right-click actions
+- generic overlay objects: **text, emoji and image/sticker**
+- independent transform keyframes for every overlay object
+- overlay scale / rotation / opacity / z-order
+- MCP parity for viewport mode, overlay objects and Library folders
