@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Clippah",
   "version": "0.4.0",
-  "description": "Clip and reframe video directly where you watch it.",
+  "description": "Clip, cut, reframe, caption and assemble browser video locally.",
   "minimum_chrome_version": "116",
   "message_serialization": "structured_clone",
   "permissions": [
@@ -19,7 +19,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Enable Clippah capture for this tab",
+    "default_title": "Clippah — click once to enable YouTube capture for this tab",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",
