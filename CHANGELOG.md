@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 — 2026-10-06
+
+- explicit Static / Animate viewport editing
+- fixed viewport edits so normal zoom/reframe can be static instead of accidental keyframes
+- draggable video fade handles directly on V1
+- draggable audio fade handles directly on A1
+- nested Explorer-style Library folders
+- drag clips into folders and folders into folders
+- right-click Library actions and Move To workflow
+- text / emoji / image overlay objects
+- per-overlay transform keyframes
+- overlay scale / rotation / opacity / z-order
+- expanded MCP tools for overlays, viewport mode and Library folders
+
 ## 0.4.0 — 2026-10-06
 
 ### Studio
