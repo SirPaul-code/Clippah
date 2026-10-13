@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Clippah",
-  "version": "0.5.0",
+  "version": "0.5.2",
   "description": "Clip, cut, animate, organize and assemble browser video locally.",
   "minimum_chrome_version": "116",
   "message_serialization": "structured_clone",
@@ -10,10 +10,12 @@
     "storage",
     "tabCapture",
     "offscreen",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "downloads"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "<all_urls>",
+    "https://raw.githubusercontent.com/*"
   ],
   "background": {
     "service_worker": "background.js"
