@@ -22,7 +22,7 @@ const state = {
   selectedSegmentId: null, selectedTextId: null, tool: 'select', globalTime: 0, playing: false, playRaf: 0,
   sourceUrl: null, loadedSegmentId: null, sourceReady: false, draggingCanvas: false, dragStart: null, transformStart: null, textDrag: false,
   waveformCache: new Map(), waveformPending: new Set(), saveTimer: 0, toastTimer: 0, pendingInsertIndex: null, dragInsertIndex: null,
-  exporting: false, exportCancelled: false, exportDownloadId: null, exportStartTime: 0, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
+  playToken: 0, playRequestPending: false, seekRequest: 0, cameraDraft: null, exporting: false, exportCancelled: false, exportDownloadId: null, exportStartTime: 0, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
   contextSegmentId: null, fonts: ['Arial','Verdana','Tahoma','Trebuchet MS','Georgia','Times New Roman','Courier New','Impact','Segoe UI','Roboto','Inter','Helvetica']
 };
 
@@ -507,30 +507,135 @@ function updateAudioLevel(location=globalToLocation()){
 }
 
 function unloadSource(){if(state.sourceUrl)URL.revokeObjectURL(state.sourceUrl);state.sourceUrl=null;state.loadedSegmentId=null;state.sourceReady=false;els.source.pause();els.source.removeAttribute('src');els.source.load();}
-async function loadLocation(location, forceSeek=true){
-  if(!location)return;
-  if(state.loadedSegmentId!==location.segment.id){
-    if(state.sourceUrl)URL.revokeObjectURL(state.sourceUrl);state.sourceUrl=URL.createObjectURL(location.clip.blob);state.loadedSegmentId=location.segment.id;state.sourceReady=false;els.source.pause();els.source.src=state.sourceUrl;els.source.load();await new Promise(resolve=>{if(els.source.readyState>=1)return resolve();const done=()=>resolve();els.source.addEventListener('loadedmetadata',done,{once:true});setTimeout(done,900)});state.sourceReady=true;
-  }
-  els.source.playbackRate=location.segment.speed;
-  if(forceSeek||Math.abs(els.source.currentTime-location.sourceTime)>.12){try{els.source.currentTime=location.sourceTime}catch(_){}}
-  updateAudioLevel(location);draw();
+async function waitForSourceMetadata(video,timeoutMs=8000){
+  if(video.readyState>=1)return;
+  await new Promise((resolve,reject)=>{
+    let timeout;
+    const cleanup=()=>{clearTimeout(timeout);video.removeEventListener('loadedmetadata',onReady);video.removeEventListener('error',onError)};
+    const onReady=()=>{cleanup();resolve()};
+    const onError=()=>{cleanup();reject(new Error('Source video could not be loaded.'))};
+    video.addEventListener('loadedmetadata',onReady);
+    video.addEventListener('error',onError);
+    timeout=setTimeout(()=>{cleanup();reject(new Error('Loading source video timed out.'))},timeoutMs);
+  });
 }
-async function seekGlobal(time, pause=true){
-  const total=totalDuration();state.globalTime=clamp(Number(time)||0,0,total);if(pause)pauseSequence(false);const loc=globalToLocation();if(loc){state.selectedSegmentId=loc.segment.id;await loadLocation(loc,true);}renderPlayhead();renderTimeline();draw();
+async function seekSourceFrame(video,time,timeoutMs=6000){
+  const target=Math.max(0,Number(time)||0);
+  if(!video.seeking&&Math.abs(video.currentTime-target)<.022&&video.readyState>=2)return;
+  await new Promise((resolve,reject)=>{
+    let timeout;
+    const cleanup=()=>{clearTimeout(timeout);video.removeEventListener('seeked',onReady);video.removeEventListener('loadeddata',onReady);video.removeEventListener('error',onError)};
+    const onReady=()=>{if(video.seeking||Math.abs(video.currentTime-target)>.035)return;cleanup();resolve()};
+    const onError=()=>{cleanup();reject(new Error('Video failed while seeking.'))};
+    video.addEventListener('seeked',onReady);
+    video.addEventListener('loadeddata',onReady);
+    video.addEventListener('error',onError);
+    timeout=setTimeout(()=>{cleanup();reject(new Error('Seeking source frame timed out.'))},timeoutMs);
+    try{
+      video.currentTime=target;
+      if(!video.seeking&&video.readyState>=2&&Math.abs(video.currentTime-target)<.035)onReady();
+    }catch(error){cleanup();reject(error);}
+  });
+}
+async function loadLocation(location,forceSeek=true){
+  if(!location||!location.clip?.blob)throw new Error('A clip on the timeline is missing its recorded video.');
+  const segmentId=location.segment.id;
+  if(state.loadedSegmentId!==segmentId){
+    if(state.sourceUrl)URL.revokeObjectURL(state.sourceUrl);
+    state.sourceUrl=URL.createObjectURL(location.clip.blob);
+    state.loadedSegmentId=segmentId;state.sourceReady=false;
+    els.source.pause();els.source.src=state.sourceUrl;els.source.load();
+    await waitForSourceMetadata(els.source);
+    if(state.loadedSegmentId!==segmentId)return;
+    state.sourceReady=true;
+  }
+  if(state.loadedSegmentId!==segmentId)return;
+  els.source.playbackRate=location.segment.speed;
+  if(forceSeek||Math.abs(els.source.currentTime-location.sourceTime)>.12){
+    await seekSourceFrame(els.source,location.sourceTime);
+    if(state.loadedSegmentId!==segmentId)return;
+  }
+  updateAudioLevel(location);
+  if(!state.exporting)draw();
+}
+async function seekGlobal(time,pause=true){
+  if(pause)pauseSequence(false);
+  const request=++state.seekRequest;
+  const total=totalDuration();
+  state.globalTime=clamp(Number(time)||0,0,total);
+  clearCameraDraft();
+  const loc=globalToLocation();
+  if(loc){
+    state.selectedSegmentId=loc.segment.id;
+    try{await loadLocation(loc,true);}catch(error){if(request===state.seekRequest)toast(error?.message||'Seek failed.',true,5000);}
+  }
+  if(request!==state.seekRequest)return;
+  renderPlayhead();renderTimeline();draw();
+}
+function syncPlaybackPosition(){
+  const item=sequenceLayout().find(x=>x.segment.id===state.loadedSegmentId);
+  if(!item||!Number.isFinite(els.source.currentTime))return state.globalTime;
+  state.globalTime=clamp(item.start+(els.source.currentTime-item.segment.in)/Math.max(.05,item.segment.speed),item.start,item.end);
+  return state.globalTime;
 }
 async function playSequence(){
-  if(!state.project.segments.length)return;if(state.playing)return pauseSequence();if(state.globalTime>=totalDuration()-.01)state.globalTime=0;state.playing=true;els.play.textContent='❚❚';const loc=globalToLocation();await loadLocation(loc,true);await ensureAudioGraph().catch(()=>{});try{await state.audioContext?.resume()}catch(_){};try{await els.source.play()}catch(error){state.playing=false;toast(error?.message||'Could not start playback.',true);return}state.playRaf=requestAnimationFrame(playLoop);
+  if(state.exporting||!state.project.segments.length)return;
+  if(state.playing||state.playRequestPending){pauseSequence();return;}
+  clearCameraDraft();
+  if(state.globalTime>=totalDuration()-.01)state.globalTime=0;
+  const request=++state.playToken;
+  state.playRequestPending=true;els.play.textContent='...';
+  try{
+    const loc=globalToLocation();
+    if(!loc)throw new Error('No clip on the timeline.');
+    await loadLocation(loc,true);
+    if(request!==state.playToken)return;
+    await ensureAudioGraph();
+    if(state.audioContext)await state.audioContext.resume();
+    if(request!==state.playToken)return;
+    await els.source.play();
+    if(request!==state.playToken){els.source.pause();return;}
+    state.playing=true;els.play.textContent='❚❚';
+    state.playRaf=requestAnimationFrame(playLoop);
+  }catch(error){
+    if(request===state.playToken){els.source.pause();els.play.textContent='▶';toast(error?.message||'Could not start playback.',true);}
+  }finally{
+    if(request===state.playToken)state.playRequestPending=false;
+  }
 }
 async function playLoop(){
-  if(!state.playing)return;const loc=globalToLocation();if(!loc){pauseSequence();return}
-  const same=loc.segment.id===state.loadedSegmentId;
-  if(same){const current=els.source.currentTime;state.globalTime=clamp(loc.start+(current-loc.segment.in)/loc.segment.speed,loc.start,loc.end);updateAudioLevel({...loc,sourceTime:current,localOutput:(current-loc.segment.in)/loc.segment.speed});draw();renderPlayhead();if(current>=loc.segment.out-.025||els.source.ended){const next=sequenceLayout()[loc.index+1];if(!next){state.globalTime=totalDuration();pauseSequence(false);renderPlayhead();return}state.globalTime=next.start;await loadLocation({...next,globalTime:next.start,localOutput:0,sourceTime:next.segment.in},true);try{await els.source.play()}catch(_){}}
-  }else await loadLocation(globalToLocation(),true);
-  state.playRaf=requestAnimationFrame(playLoop);
+  if(!state.playing)return;
+  const request=state.playToken;
+  const item=sequenceLayout().find(x=>x.segment.id===state.loadedSegmentId);
+  if(!item){pauseSequence();return;}
+  const sourceTime=els.source.currentTime;
+  if(!Number.isFinite(sourceTime)){pauseSequence();toast('Video playback lost its timeline position.',true);return;}
+  syncPlaybackPosition();
+  updateAudioLevel({...item,sourceTime,localOutput:clamp((sourceTime-item.segment.in)/item.segment.speed,0,item.duration)});
+  draw();renderPlayhead();
+  if(sourceTime>=item.segment.out-.025||els.source.ended){
+    const next=sequenceLayout()[item.index+1];
+    if(!next){state.globalTime=totalDuration();pauseSequence(false);renderPlayhead();return;}
+    state.globalTime=next.start;
+    try{
+      await loadLocation({...next,globalTime:next.start,localOutput:0,sourceTime:next.segment.in},true);
+      if(request!==state.playToken||!state.playing)return;
+      await els.source.play();
+      if(request!==state.playToken||!state.playing){els.source.pause();return;}
+    }catch(error){
+      if(request===state.playToken){pauseSequence();toast('Playback stopped: '+(error?.message||'Video source error'),true);}
+      return;
+    }
+  }
+  if(request===state.playToken&&state.playing)state.playRaf=requestAnimationFrame(playLoop);
 }
-function pauseSequence(update=true){state.playing=false;cancelAnimationFrame(state.playRaf);els.source.pause();els.play.textContent='▶';if(update)renderPlayhead();}
-
+function pauseSequence(update=true){
+  if(state.playing)syncPlaybackPosition();
+  state.playToken++;state.playRequestPending=false;state.playing=false;
+  cancelAnimationFrame(state.playRaf);
+  els.source.pause();els.play.textContent='▶';
+  if(update){renderPlayhead();syncInspector();draw();}
+}
 function currentTransform(){const loc=globalToLocation();return loc?segmentMotionAt(loc.segment,loc.sourceTime):{x:.5,y:.5,zoom:1};}
 function commitViewport(transform){const loc=globalToLocation();if(!loc)return;const segment=loc.segment;if(state.project.autoKeyframe)upsertKeyframe(segment,loc.sourceTime,transform);else{segment.motion=[{time:segment.in,...transform}];saveProject();renderKeyframes();renderTimeline()}draw();}
 
