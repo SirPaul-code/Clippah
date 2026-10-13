@@ -252,8 +252,8 @@ function renderRuler() {
   const total = totalDuration();
   els.ruler.innerHTML = '';
   if (!total) return;
-  const needed=80/Math.max(2,state.timelinePixelsPerSecond);
-  const steps=[.5,1,2,5,10,15,30,60,120,300,600].find(x=>x>=needed)||600;
+  const needed=80/Math.max(.05,state.timelinePixelsPerSecond);
+  const steps=[.5,1,2,5,10,15,30,60,120,300,600,1800,3600].find(x=>x>=needed)||3600;
   for (let t = 0; t <= total + .001; t += steps) {
     const tick = document.createElement('span');
     tick.className = 'ruler-tick';
@@ -1751,7 +1751,7 @@ async function requestScrub(time){
 }
 els.timelineZoom.addEventListener('input',()=>{
   state.timelinePixelsPerSecond=Number(els.timelineZoom.value);
-  els.timelineZoomLabel.textContent=state.timelinePixelsPerSecond+'px/s';
+  els.timelineZoomLabel.textContent=state.timelinePixelsPerSecond.toFixed(1)+'px/s';
   updateTimelineSize();renderTimeline();
 });
 els.timelineZoom.addEventListener('change',()=>{
@@ -1759,9 +1759,12 @@ els.timelineZoom.addEventListener('change',()=>{
 });
 els.timelineFit.addEventListener('click',()=>{
   const total=totalDuration(),available=els.timelineViewport.clientWidth-112;
-  state.timelinePixelsPerSecond=clamp(total?Math.floor(available/total):32,2,120);
+  state.timelinePixelsPerSecond=clamp(total?available/total:32,.05,240);
+  els.timelineZoom.min=String(Math.min(.05,state.timelinePixelsPerSecond));
+  els.timelineZoom.max=String(Math.max(240,state.timelinePixelsPerSecond*4));
+  els.timelineZoom.step='any';
   els.timelineZoom.value=String(state.timelinePixelsPerSecond);
-  els.timelineZoomLabel.textContent=state.timelinePixelsPerSecond+'px/s';
+  els.timelineZoomLabel.textContent=state.timelinePixelsPerSecond.toFixed(1)+'px/s';
   renderTimeline();els.timelineViewport.scrollLeft=0;
   chrome.storage.local.set({'clippah:timeline-pps':state.timelinePixelsPerSecond});
 });
@@ -1823,8 +1826,8 @@ async function init(){
   const savedShortcuts=await chrome.storage.local.get('clippah:shortcuts');
   state.shortcutKeys={...state.shortcutKeys,...(savedShortcuts['clippah:shortcuts']||{})};
   const layoutSettings=await chrome.storage.local.get('clippah:timeline-pps');
-  state.timelinePixelsPerSecond=clamp(Number(layoutSettings['clippah:timeline-pps'])||32,14,120);
-  if(els.timelineZoom){els.timelineZoom.value=String(state.timelinePixelsPerSecond);els.timelineZoomLabel.textContent=state.timelinePixelsPerSecond+'px/s';}
+  state.timelinePixelsPerSecond=clamp(Number(layoutSettings['clippah:timeline-pps'])||32,.05,240);
+  if(els.timelineZoom){els.timelineZoom.min='0.05';els.timelineZoom.max='240';els.timelineZoom.step='any';els.timelineZoom.value=String(state.timelinePixelsPerSecond);els.timelineZoomLabel.textContent=state.timelinePixelsPerSecond.toFixed(1)+'px/s';}
   state.clips=(await getAll('clips')).sort((a,b)=>b.createdAt-a.createdAt);state.folders=(await getAll('folders')).sort((a,b)=>a.name.localeCompare(b.name));await loadProject();state.selectedSegmentId=state.project.segments[0]?.id||null;populateFonts();renderAll();els.stage.className=`stage ratio-${state.project.aspect.replace(':','-')}`;if(state.project.segments.length)await seekGlobal(0,true);else renderTimeline();
 }
 init();
