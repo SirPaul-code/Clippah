@@ -246,6 +246,14 @@ async function setCaptureNeeded(tabId) {
   } catch (_) {}
 }
 
+async function setCaptureErrorBadge(tabId,message){
+  try{
+    await chrome.action.setBadgeText({tabId,text:'!'});
+    await chrome.action.setBadgeBackgroundColor({tabId,color:'#d44255'});
+    await chrome.action.setTitle({tabId,title:'Clippah capture failed: '+String(message||'Please try again').slice(0,180)});
+  }catch(_){}
+}
+
 chrome.action.onClicked.addListener(async tab => {
   if (!tab.id) return;
   try {
@@ -270,8 +278,8 @@ chrome.action.onClicked.addListener(async tab => {
     await setCaptureBadge(tab.id, true);
     await tell(tab.id, { type: 'CLIPPAH_CAPTURE_STATE', ready: true });
   } catch (error) {
-    await setCaptureBadge(tab.id, false);
-    await tell(tab.id, { type: 'CLIPPAH_ERROR', message: error?.message || String(error) });
+    await setCaptureErrorBadge(tab.id,error?.message||String(error));
+    await tell(tab.id,{type:'CLIPPAH_ERROR',message:error?.message||String(error)});
   }
 });
 
