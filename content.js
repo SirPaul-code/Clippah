@@ -12,6 +12,7 @@
     segments: [],
     compatibilityReady: false,
     panelEnabled: false,
+    placementRunning: false,
     recording: false,
     captureMode: null,
     inTime: null,
@@ -541,10 +542,15 @@
     };
   }
 
+  function startPlacement(){
+    if(state.placementRunning||!state.panelEnabled)return;
+    state.placementRunning=true;
+    requestAnimationFrame(placeUi);
+  }
   function placeUi() {
     if (!state.panelEnabled) {
       if(state.root)state.root.style.display='none';
-      requestAnimationFrame(placeUi);
+      state.placementRunning=false;
       return;
     }
     ensureUi();
@@ -619,6 +625,7 @@
       ensureUi();
       hideNotice();
       updateUi();
+      startPlacement();
       return;
     }
 
@@ -675,7 +682,6 @@
       .catch(()=>({ready:false}));
     state.compatibilityReady=!!captureState?.ready;
     state.panelEnabled=state.compatibilityReady;
-    if(state.panelEnabled){ensureUi();await loadMarkers();}
-    requestAnimationFrame(placeUi);
+    if(state.panelEnabled){ensureUi();await loadMarkers();startPlacement();}
   })();
 })();
