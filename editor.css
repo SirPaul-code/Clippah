@@ -50,3 +50,29 @@
 .overlay-block{position:absolute;height:32px;top:8px;border:1px solid #4d7087;background:#182936;border-radius:7px;padding:0 8px;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#d8eef8;font-size:.69rem}
 .overlay-block.selected{border-color:#71d5ff;background:#183645}.overlay-kind-icon{opacity:.9}
 .object-keyframe-marker{display:inline-flex}
+
+
+/* Real-time local video export progress. */
+.export-dialog-backdrop{position:fixed;inset:0;z-index:4500;background:rgba(3,4,6,.78);backdrop-filter:blur(7px);display:grid;place-items:center;padding:20px}
+.export-dialog-backdrop[hidden],.export-spinner[hidden]{display:none!important}
+.export-dialog-card{width:min(530px,95vw);padding:24px;border:1px solid #3c4557;background:#121721;border-radius:18px;box-shadow:0 25px 90px rgba(0,0,0,.66);display:flex;flex-direction:column;gap:14px}
+.export-dialog-heading{display:flex;align-items:center;gap:14px;min-height:45px}
+.export-heading-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.export-heading-copy strong{font-size:1.12rem}
+.export-heading-copy span{color:var(--muted);font-size:.82rem}
+.export-spinner{width:34px;height:34px;flex:none;border:3px solid #333e55;border-top-color:var(--accent2);border-radius:50%;animation:clippah-export-spin .8s linear infinite}
+@keyframes clippah-export-spin{to{transform:rotate(360deg)}}
+.export-measure{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.export-measure strong{font-size:1.9rem;font-variant-numeric:tabular-nums}
+.export-measure span{font-size:.82rem;color:#c5cbd7;font-variant-numeric:tabular-nums}
+.export-progress-track{height:13px;border-radius:999px;background:#2b3140;border:1px solid #3c4353;overflow:hidden}
+.export-progress-bar{width:0;height:100%;background:linear-gradient(90deg,#6e58f4,#aa9dff);border-radius:999px;transition:width .18s ease}
+.export-eta{font-size:.8rem;color:#c3b9ff;margin:-5px 0 4px}
+.export-file-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;font-size:.77rem}
+.export-file-row span{font-size:.68rem;font-weight:800;letter-spacing:.09em;color:var(--muted2)}
+.export-file-row strong{font-size:.77rem;font-weight:700;text-align:right;overflow-wrap:anywhere}
+.export-detail{min-height:39px;font-size:.81rem;line-height:1.6;color:var(--muted);margin:3px 0 0}
+.export-dialog-actions{display:flex;justify-content:flex-end;padding-top:7px;border-top:1px solid var(--line)}
+.export-dialog-actions button{padding:0 17px}
+.export-error .export-measure strong,.export-error .export-heading-copy strong{color:#ffb3bd}
+@media(prefers-reduced-motion:reduce){.export-spinner{animation:none}.export-progress-bar{transition:none}}
