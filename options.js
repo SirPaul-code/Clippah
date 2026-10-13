@@ -65,3 +65,43 @@ document.querySelector('#shortcuts-reset').addEventListener('click',async()=>{
   await chrome.storage.local.set({'clippah:shortcuts':shortcutKeys});
   paintShortcuts('Shortcuts reset to defaults.');
 });
+
+
+// License activation uses only server-verified entitlements; never a local premium flag.
+const licenseStatus=document.querySelector('#license-status');
+const licenseInput=document.querySelector('#license-key');
+const licenseActivate=document.querySelector('#license-activate');
+const licenseDeactivate=document.querySelector('#license-deactivate');
+const licenseRefresh=document.querySelector('#license-refresh');
+function renderLicense(info){
+  const pro=info.active&&info.features.includes('no_watermark');
+  licenseStatus.textContent=pro?'Pro active — watermark removed':info.configured?
+    'Free — watermark enabled; enter a Pro key':'Free — watermark enabled; license server not yet deployed';
+  licenseStatus.classList.toggle('pro',pro);
+  licenseActivate.disabled=!info.configured;
+  licenseDeactivate.disabled=!info.configured&&!info.active;
+}
+ClippahLicense.onChange(renderLicense);
+ClippahLicense.start().then(()=>ClippahLicense.refresh(true)).then(renderLicense)
+  .catch(error=>{licenseStatus.textContent=error.message;});
+licenseActivate.addEventListener('click',async()=>{
+  licenseActivate.disabled=true;licenseStatus.textContent='Activating license...';
+  try{
+    await ClippahLicense.activate(licenseInput.value);
+    licenseInput.value='';
+    renderLicense(ClippahLicense.status());
+  }catch(error){licenseStatus.textContent='Activation failed: '+error.message;}
+  finally{licenseActivate.disabled=!ClippahLicense.status().configured;}
+});
+licenseDeactivate.addEventListener('click',async()=>{
+  licenseDeactivate.disabled=true;
+  try{renderLicense(await ClippahLicense.deactivate());}
+  catch(error){licenseStatus.textContent=error.message;}
+  finally{licenseDeactivate.disabled=false;}
+});
+licenseRefresh.addEventListener('click',async()=>{
+  licenseRefresh.disabled=true;
+  try{renderLicense(await ClippahLicense.refresh(true));}
+  catch(error){licenseStatus.textContent=error.message;}
+  finally{licenseRefresh.disabled=false;}
+});
