@@ -15,7 +15,7 @@ class VirtualFile {
     const self=this;
     let staged=null;
     return {
-      async write(data) {if(self.parent.failWrite===self.name)throw Error('Simulated write failure');staged=Uint8Array.from(data);},
+      async write(data) {if(self.parent.failWrite===self.name)throw Error(self.parent.failReason||'Simulated write failure');staged=Uint8Array.from(data);},
       async close() {self.parent.entries.set(self.name,staged);},
       async abort() {staged=null;}
     };
@@ -114,4 +114,49 @@ test('GitHub release verifies every downloaded file against immutable tree blobs
   const bad=bytes('tampered contents');
   responses.set('https://raw.githubusercontent.com/SirPaul-code/Clippah/'+sha+'/options.js',bad);
   await assert.rejects(()=>updater.fetchRelease(oldVersion,()=>{},fetchFake),/integrity check/);
+});
+
+
+test('Windows/Chrome security policy failure identifies the file and verifies original versions',async()=>{
+  const folder=new VirtualFolder();
+  for(const path of baseList)folder.entries.set(path,bytes('OLD '+path));
+  folder.failWrite='updater.js';
+  folder.failReason='Aborted due to security policy';
+  const fresh=new Map(baseList.map(path=>[path,bytes('NEW '+path)]));
+  let problem;
+  try{await updater.installPrepared(folder,{version:'0.6.1',files:baseList,downloaded:fresh})}
+  catch(error){problem=error}
+  assert.ok(problem,'A blocked update must throw');
+  assert.equal(problem.failedFile,'updater.js');
+  assert.equal(problem.failedPhase,'write');
+  assert.equal(problem.securityBlocked,true);
+  assert.equal(problem.rollbackVerified,true);
+  assert.match(problem.message,/Aborted due to security policy/);
+  for(const path of baseList)assert.equal(utf8(folder.entries.get(path)),'OLD '+path);
+});
+
+test('write policy denial before new file content must not leave empty placeholder file',async()=>{
+  const folder=new VirtualFolder();
+  for(const path of baseList)folder.entries.set(path,bytes('OLD '+path));
+  folder.failWrite='new-theme.css';
+  folder.failReason='Aborted due to security policy';
+  const all=[...baseList.filter(x=>x!=='manifest.json'),'new-theme.css','manifest.json'];
+  const fresh=new Map(all.map(path=>[path,bytes('NEW '+path)]));
+  await assert.rejects(
+    ()=>updater.installPrepared(folder,{version:'0.6.1',files:all,downloaded:fresh}),
+    error=>error.failedFile==='new-theme.css'&&error.securityBlocked&&error.rollbackVerified
+  );
+  assert.equal(folder.entries.has('new-theme.css'),false);
+  for(const path of baseList)assert.equal(utf8(folder.entries.get(path)),'OLD '+path);
+});
+
+test('unchanged runtime files skip writes and preserve manifest-last write order',async()=>{
+  const folder=new VirtualFolder();
+  const fresh=new Map(baseList.map(path=>[path,bytes('CURRENT '+path)]));
+  for(const [path,data] of fresh)folder.entries.set(path,bytes(utf8(data)));
+  const progress=[];
+  const result=await updater.installPrepared(folder,{version:'0.6.1',files:baseList,downloaded:fresh},info=>progress.push(info));
+  assert.equal(result.updated,0);
+  assert.equal(progress.filter(x=>x.phase==='writing').length,0);
+  assert.equal(progress.filter(x=>x.phase==='unchanged').length,baseList.length);
 });

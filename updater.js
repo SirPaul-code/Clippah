@@ -129,15 +129,35 @@
     }
   }
 
-  async function writeFileBytes(rootHandle,path,bytes) {
-    const {file} = await getFileHandle(rootHandle,path,true);
-    const stream = await file.createWritable();
-    try {
+  function describeFileFailure(error,phase,path){
+    const original=String(error?.message||error||'Unknown I/O error');
+    const wrapped=new Error('Failed to '+phase+' "'+path+'": '+original);
+    wrapped.name=error?.name||'FileUpdateError';
+    wrapped.file=path;
+    wrapped.phase=phase;
+    wrapped.securityBlocked=/aborted due to security policy|blocked by safe browsing|virus detected|malware|blocked by your organization|securityerror/i.test(original);
+    return wrapped;
+  }
+
+  function sameBytes(a,b){
+    if(!a||!b||a.byteLength!==b.byteLength)return false;
+    for(let i=0;i<a.byteLength;i++)if(a[i]!==b[i])return false;
+    return true;
+  }
+
+  async function writeFileBytes(rootHandle,path,bytes){
+    let file,stream,phase='open';
+    try{
+      ({file}=await getFileHandle(rootHandle,path,true));
+      phase='create writable';
+      stream=await file.createWritable();
+      phase='write';
       await stream.write(bytes);
+      phase='finalize';
       await stream.close();
-    } catch (error) {
-      try {await stream.abort();} catch (_) {}
-      throw error;
+    }catch(error){
+      if(stream)try{await stream.abort()}catch(_){}
+      throw describeFileFailure(error,phase,path);
     }
   }
 
@@ -164,41 +184,72 @@
     return true;
   }
 
-  async function installPrepared(folder,release,progress = () => {}) {
-    const files = validateFileList({schema:1,files:release.files});
-    if (!release.downloaded || files.some(path => !release.downloaded.has(path)))
+  async function installPrepared(folder,release,progress = () => {}){
+    const files=validateFileList({schema:1,files:release.files});
+    if(!release.downloaded||files.some(path=>!release.downloaded.has(path)))
       throw new Error('Update cannot start until all files have been downloaded and verified.');
-    // Use manifest.json last: the recorded on-disk version changes only after all other files.
-    const order = [...files.filter(name => name !== 'manifest.json'),'manifest.json'];
-    const backup = new Map();
-    for (const path of order) backup.set(path,await readFileBytes(folder,path));
-    const updated = [];
-    try {
-      for (const path of order) {
-        const data = release.downloaded.get(path);
-        await writeFileBytes(folder,path,data);
-        updated.push(path);
-        progress({phase:'install',current:updated.length,total:order.length,path});
-      }
-      for (const path of order) {
-        const actual = await readFileBytes(folder,path);
-        if (!actual || await sha256(actual) !== await sha256(release.downloaded.get(path)))
-          throw new Error('Post-install verification failed for '+path);
-      }
-    } catch (error) {
-      const failedRollbacks = [];
-      for (const path of [...updated].reverse()) {
-        try {
-          const old = backup.get(path);
-          if (old === null) await removeNewFile(folder,path);
-          else await writeFileBytes(folder,path,old);
-        } catch (restoreError) { failedRollbacks.push(path+': '+restoreError.message); }
-      }
-      if (failedRollbacks.length)
-        throw new Error(error.message + '. Rollback was incomplete: '+failedRollbacks.join('; ')+'. Restore the extension-only ZIP manually.');
-      throw new Error(error.message+'. Previous extension files were restored.');
+    const order=[...files.filter(name=>name!=='manifest.json'),'manifest.json'];
+    const backup=new Map();
+    // Snapshot every original before mutating anything.
+    for(const path of order){
+      try{backup.set(path,await readFileBytes(folder,path))}
+      catch(error){throw describeFileFailure(error,'read original',path)}
     }
-    return {version:release.version,updated:order.length};
+    const modified=[];
+    let attempted=null;
+    try{
+      for(const path of order){
+        attempted=path;
+        const data=release.downloaded.get(path);
+        if(sameBytes(backup.get(path),data)){
+          progress({phase:'unchanged',current:modified.length,total:order.length,path});
+          continue;
+        }
+        progress({phase:'writing',current:modified.length,total:order.length,path});
+        await writeFileBytes(folder,path,data);
+        modified.push(path);
+        progress({phase:'install',current:modified.length,total:order.length,path});
+      }
+      for(const path of order){
+        let actual;
+        try{actual=await readFileBytes(folder,path)}
+        catch(error){throw describeFileFailure(error,'verify installed',path)}
+        if(!sameBytes(actual,release.downloaded.get(path)))
+          throw describeFileFailure(new Error('Installed file checksum does not match downloaded file'),'verify installed',path);
+      }
+    }catch(error){
+      // A failed createWritable/close can leave a new empty or partial file even
+      // if the operation rejected. Restore the attempted path as well.
+      const recovery=[...modified];
+      if(attempted&&!recovery.includes(attempted))recovery.push(attempted);
+      const notRestored=[];
+      for(const path of recovery.reverse()){
+        try{
+          const original=backup.get(path);
+          const current=await readFileBytes(folder,path);
+          if(original===null){
+            if(current!==null)await removeNewFile(folder,path);
+          }else if(!sameBytes(current,original)){
+            await writeFileBytes(folder,path,original);
+          }
+          const check=await readFileBytes(folder,path);
+          if(original===null?check!==null:!sameBytes(check,original))
+            throw new Error('Original file differs after rollback');
+        }catch(restoreError){notRestored.push(path+': '+(restoreError?.message||String(restoreError)))}
+      }
+      const restored=notRestored.length===0;
+      const status=restored
+        ?'Previous extension files were verified restored.'
+        :'ROLLBACK INCOMPLETE for '+notRestored.join('; ')+'. Do not reload the extension. Restore the release ZIP manually.';
+      const wrapped=new Error((error?.message||String(error))+'. '+status);
+      wrapped.failedFile=error?.file||attempted;
+      wrapped.failedPhase=error?.phase||'install';
+      wrapped.securityBlocked=Boolean(error?.securityBlocked)||
+        /aborted due to security policy|blocked by safe browsing|virus detected|malware|securityerror/i.test(error?.message||'');
+      wrapped.rollbackVerified=restored;
+      throw wrapped;
+    }
+    return {version:release.version,updated:modified.length};
   }
 
   function openDb() {
@@ -260,12 +311,12 @@
     folder:document.querySelector('#update-folder-name'),
     github:document.querySelector('#update-link')
   };
-  let linkedFolder=null,latest=null,busy=false;
+  let linkedFolder=null,latest=null,busy=false,securityBlocked=false;
   const installed=root.chrome.runtime.getManifest().version;
   function message(status,detail=''){ui.status.textContent=status;ui.details.textContent=detail;}
   function paint(){
     ui.install.hidden=!latest?.newer;
-    ui.install.disabled=busy;
+    ui.install.disabled=busy||securityBlocked;
     ui.check.disabled=busy;
     ui.link.disabled=busy;
     ui.unlink.disabled=busy||!linkedFolder;
@@ -276,7 +327,8 @@
     const percent=Math.round(info.current/Math.max(1,info.total)*100);
     ui.bar.style.width=percent+'%';
     ui.progress.setAttribute('aria-valuenow',String(percent));
-    message(info.phase==='download'?'Downloading verified files...':'Installing update...',
+    const labels={download:'Downloading verified files...',writing:'Updating extension files...',install:'Installing update...',unchanged:'Skipping unchanged file...'};
+    message(labels[info.phase]||'Preparing update...',
       info.current+'/'+info.total+' · '+info.path);
   }
 
@@ -310,12 +362,14 @@
     finally{busy=false;paint();}
   });
   ui.check.addEventListener('click',async()=>{
-    busy=true;paint();ui.github.hidden=true;
+    busy=true;securityBlocked=false;paint();ui.github.hidden=true;
     message('Checking GitHub for updates...');
     try {
       latest=await checkLatest(installed);
       if (latest.newer){
         message('Clippah '+latest.version+' is available','Installed: '+installed+'. Click Install update to apply directly to your linked extension folder.');
+        ui.github.textContent='Get verified extension-only build on GitHub Actions';
+        ui.github.href='https://github.com/SirPaul-code/Clippah/actions/workflows/validate-package.yml?query=branch%3Amain';
         ui.github.hidden=false;
       }else message('Clippah '+installed+' is up to date','GitHub main: '+latest.version+'. Nothing to install.');
     } catch(error){latest=null;message('Could not check GitHub',error.message);}
@@ -345,8 +399,23 @@
       ui.bar.style.width='100%';
       setTimeout(()=>root.chrome.runtime.reload(),900);
     }catch(error){
-      message('Update not installed',error.message);
-      console.error('Clippah updater:',error);
+      const file=error?.failedFile||'unknown file';
+      const phase=error?.failedPhase||'installation';
+      if(error?.securityBlocked){
+        securityBlocked=true;
+        message('Chrome blocked this update for security reasons',
+          'Blocked: '+file+' ('+phase+'). '+
+          (error.rollbackVerified?
+            'The updater checked and restored the original extension files. ':
+            'ROLLBACK COULD NOT BE VERIFIED. Do not reload Chrome or Clippah. ')+
+          'Chrome or antivirus policy refused the file write. Do not disable security protection. Use the linked GitHub Actions build for a manual update, or inspect Windows Security → Protection history to identify the detection.');
+        ui.github.textContent='Open official extension-only build';
+        ui.github.href='https://github.com/SirPaul-code/Clippah/actions/workflows/validate-package.yml?query=branch%3Amain';
+        ui.github.hidden=false;
+      }else{
+        message('Update not installed','Failed at '+file+' ('+phase+'): '+error.message);
+      }
+      console.error('Clippah updater:',{file,phase,securityBlocked:Boolean(error?.securityBlocked),rollbackVerified:error?.rollbackVerified,error});
     }finally{busy=false;paint();}
   });
 })(typeof globalThis!=='undefined'?globalThis:this);
