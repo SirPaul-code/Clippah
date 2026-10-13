@@ -53,7 +53,7 @@
       <div id="stage" class="stage ratio-16-9" hidden>
         <canvas id="preview"></canvas>
         <div id="viewer-guides" class="viewer-guides"></div>
-        <div class="canvas-help"><span>Drag = reframe</span><span>Wheel = zoom</span><span id="auto-hint">Manual keyframe · K</span></div>
+        <div class="canvas-help"><span>Drag = move camera</span><span>Wheel = zoom at cursor</span><span id="auto-hint">Manual keyframe · K</span></div>
       </div>
     </div>
 
@@ -64,14 +64,26 @@
         <button id="camera-keyframe" class="transport-action" title="Commit the camera position to a keyframe (K)">◆ K Keyframe</button><span id="camera-draft-status" class="camera-draft-status">K = save keyframe</span><button id="split-at-playhead" class="transport-action" data-tip="Split selected segment at playhead">Split</button>
         <button id="delete-segment" class="transport-action danger" data-tip="Delete selected timeline segment">Delete</button>
         <div class="transport-spacer"></div>
+        <label class="timeline-zoom" for="timeline-zoom" title="Timeline horizontal zoom, not camera zoom">Timeline <input id="timeline-zoom" type="range" min="14" max="120" step="2" value="32"><span id="timeline-zoom-label">32px/s</span></label>
+        <button id="timeline-fit" class="transport-action" title="Fit the entire sequence in the timeline">Fit</button>
         <span id="duration" class="timecode muted">0:00.000</span>
       </div>
 
-      <div id="timeline" class="timeline" tabindex="0">
+      <div id="timeline-viewport" class="timeline-viewport">
+      <div id="timeline" class="timeline" tabindex="0" aria-label="Editable video timeline">
+
         <div id="ruler" class="ruler"></div>
         <div class="track-row video-row">
           <div class="track-label"><strong>V1</strong><span>Video</span></div>
           <div id="video-track" class="track video-track" data-dropzone="clips"></div>
+        </div>
+        <div class="track-row motion-row">
+          <div class="track-label"><strong>M1</strong><span>Camera</span></div>
+          <div id="motion-track" class="track motion-track" aria-label="Camera animation keyframes">
+            <svg id="motion-curve" class="motion-curve" viewBox="0 0 1000 80" preserveAspectRatio="none" aria-hidden="true"></svg>
+            <div id="motion-keyframes" class="motion-keyframes"></div>
+            <span id="motion-empty" class="motion-empty">Pause → move/zoom camera → Space to save and play. Drag diamonds to retime.</span>
+          </div>
         </div>
         <div class="track-row audio-row">
           <div class="track-label"><strong>A1</strong><span>Audio</span></div>
@@ -85,9 +97,10 @@
           <div class="track-label"><strong>CC</strong><span>Captions</span></div>
           <div id="caption-track" class="track overlay-track"></div>
         </div>
-        <div id="playhead" class="playhead"><i></i></div>
+        <div id="playhead" class="playhead" aria-hidden="true"><i></i></div>
       </div>
-      <div class="timeline-footer"><span>Drag clips to reorder · <kbd>Space</kbd> play/pause · <kbd>K</kbd> save camera keyframe · <kbd>C</kbd> cut · Shortcuts remappable in Settings</span></div>
+      </div>
+      <div class="timeline-footer"><span>Drag a keyframe thumbnail to retime · Click the time ruler to scrub · Space commits a pending camera pose · Drag clips to reorder · <kbd>Space</kbd> play/pause · <kbd>K</kbd> save camera keyframe · <kbd>C</kbd> cut · Shortcuts remappable in Settings</span></div>
     </section>
   </section>
 
@@ -138,10 +151,20 @@
           <button data-mode="static">Static</button>
           <button data-mode="animate" class="active">Animate</button>
         </div>
+        <label class="camera-autocommit"><input type="checkbox" id="camera-autocommit" checked> Save pending camera pose on Space (then play)</label>
         <p id="motion-mode-help" class="help-copy">Animate: position / zoom the camera, press K to save, Space to continue playing. Unsaved camera previews are discarded when playback resumes.</p>
         <input id="auto-keyframe" type="checkbox" checked hidden>
       </section>
-      <section class="control-section"><div class="keyframe-head"><label>Viewport keyframes</label><span id="keyframe-count" class="pill">0</span></div><div id="keyframe-list" class="keyframe-list"></div><div class="action-grid"><button id="add-keyframe">Add at playhead</button><button id="remove-keyframe">Remove nearest</button></div><button id="clear-keyframes" class="wide danger-ghost">Clear all motion</button></section>
+      <section class="control-section"><div class="keyframe-head"><label>Viewport keyframes</label><span id="keyframe-count" class="pill">0</span></div><div id="keyframe-list" class="keyframe-list"></div>
+          <div id="selected-camera-keyframe" class="selected-camera-keyframe" hidden>
+            <span class="eyebrow">SELECTED KEYFRAME</span>
+            <div class="keyframe-edit-grid">
+              <label>Output time (s)<input id="camera-keyframe-time" type="number" min="0" step="0.033" value="0"></label>
+              <label>Zoom<input id="camera-keyframe-zoom" type="number" min="1" max="3" step="0.01" value="1"></label>
+            </div>
+            <div class="keyframe-mini-actions"><button id="camera-keyframe-prev" type="button">← Previous</button><button id="camera-keyframe-next" type="button">Next →</button><button id="camera-keyframe-delete" type="button" class="danger-ghost">Delete selected</button></div>
+          </div>
+          <div class="action-grid"><button id="add-keyframe">Add at playhead</button><button id="remove-keyframe">Remove nearest</button></div><button id="clear-keyframes" class="wide danger-ghost">Clear all motion</button></section>
     </div>
 
     <div id="panel-text" class="inspector-panel">
@@ -261,6 +284,8 @@
 <div id="context-menu" class="context-menu" hidden><button data-action="split">Split at playhead</button><button data-action="duplicate">Duplicate segment</button><button data-action="delete" class="danger-text">Delete segment</button></div>
 <div id="toast" class="toast"></div>
 <video id="source" playsinline preload="metadata"></video>
+<script src="camera-timeline.js"></script>
+<script src="license.js"></script>
 <script src="editor.js"></script>
 </body>
 </html>
