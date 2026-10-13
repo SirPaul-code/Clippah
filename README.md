@@ -1,4 +1,4 @@
-# Clippah 0.6.0
+# Clippah 0.6.1
 
 **Clip where you watch. Finish in a lightweight local editor.**
 
@@ -6,7 +6,7 @@ Clippah is a Chromium extension + local Studio for clipping browser video, assem
 
 ## Install
 
-1. Download the GitHub Actions artifact **Clippah-v0.6.0** (not the `-full` artifact). Extract the downloaded ZIP into a permanent writable folder such as `Documents\\Clippah`. Its files include `manifest.json` directly: no additional ZIP extraction or source repository is needed.
+1. Download the GitHub Actions artifact **Clippah-v0.6.1** (not the `-full` artifact). Extract the downloaded ZIP into a permanent writable folder such as `Documents\\Clippah`. Its files include `manifest.json` directly: no additional ZIP extraction or source repository is needed.
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Click **Load unpacked**.
@@ -15,6 +15,25 @@ Clippah is a Chromium extension + local Studio for clipping browser video, assem
 7. Refresh an already-open video tab once.
 
 No npm/build step is required for the browser extension itself.
+
+## Update blocked by Chrome / Windows security policy
+
+If Settings → In-app updates shows **"Aborted due to security policy"**,
+Chrome refused to write or finalize a file in the unpacked extension folder.
+This is not an ordinary permission retry and is not proof of a malware infection.
+
+- In Clippah 0.6.1+, Settings identifies the **specific file and write phase**.
+  Previous source files are checked against their original bytes after rollback.
+- Check **Windows Security → Virus & threat protection → Protection history**
+  to see whether Microsoft Defender has detected or quarantined a file.
+- **Never disable Defender, Chrome Safe Browsing, or a company policy** as an update workaround.
+- If updates remain blocked, use the **Clippah-v0.6.1** extension-only artifact
+  from [GitHub Actions](https://github.com/SirPaul-code/Clippah/actions/workflows/validate-package.yml?query=branch%3Amain).
+  Extract into the **existing** Load unpacked folder and reload from `chrome://extensions`.
+  Don't uninstall the extension: local captures can be deleted with its storage.
+- An external update helper or Chrome Web Store distribution would be needed
+  to avoid writing extension source through this restricted File System Access
+  code path; an AV policy can still block untrusted files.
 
 ## Updating without downloading ZIPs again
 
