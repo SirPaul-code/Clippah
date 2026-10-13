@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "files": [
+    "manifest.json",
+    "runtime-files.json",
+    "background.js",
+    "content.js",
+    "offscreen.html",
+    "offscreen.js",
+    "editor.html",
+    "editor.css",
+    "editor.js",
+    "options.html",
+    "options.css",
+    "options.js",
+    "updater.js",
+    "icons/icon-16.png",
+    "icons/icon-32.png",
+    "icons/icon-48.png",
+    "icons/icon-128.png"
+  ]
+}
