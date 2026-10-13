@@ -22,7 +22,7 @@ const state = {
   selectedSegmentId: null, selectedTextId: null, tool: 'select', globalTime: 0, playing: false, playRaf: 0,
   sourceUrl: null, loadedSegmentId: null, sourceReady: false, draggingCanvas: false, dragStart: null, transformStart: null, textDrag: false,
   waveformCache: new Map(), waveformPending: new Set(), saveTimer: 0, toastTimer: 0, pendingInsertIndex: null, dragInsertIndex: null,
-  playToken: 0, playRequestPending: false, seekRequest: 0, cameraDraft: null, exporting: false, exportCancelled: false, exportDownloadId: null, exportStartTime: 0, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
+  playToken: 0, playRequestPending: false, seekRequest: 0, cameraDraft: null, shortcutKeys: {play:'Space',keyframe:'KeyK',cut:'KeyC',select:'KeyV',split:'KeyS'}, exporting: false, exportCancelled: false, exportDownloadId: null, exportStartTime: 0, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
   contextSegmentId: null, fonts: ['Arial','Verdana','Tahoma','Trebuchet MS','Georgia','Times New Roman','Courier New','Impact','Segoe UI','Roboto','Inter','Helvetica']
 };
 
@@ -745,6 +745,7 @@ async function downloadWithSaveAs(blob,filename){
 }
 async function exportSequence(){
   if(state.exporting)return;
+  clearCameraDraft();
   if(!state.project.segments.length){toast('Add a clip to the timeline first.',true);return;}
   state.exporting=true;state.exportCancelled=false;state.exportDownloadId=null;state.exportStartTime=0;
   els.export.disabled=true;
@@ -959,6 +960,43 @@ Object.assign(state,{
   overlayImages:new Map(),overlayBounds:new Map(),overlayDrag:false,overlayDragStart:null,overlayTransformStart:null,
   fadeDrag:null
 });
+
+
+function clearCameraDraft(){
+  if(state.cameraDraft?.segmentId){
+    const segment=segmentById(state.cameraDraft.segmentId);
+    if(segment)delete segment.__previewTransform;
+  }
+  state.cameraDraft=null;
+  if(els.cameraDraftStatus)els.cameraDraftStatus.textContent='K = save keyframe';
+}
+function stageCameraTransform(next){
+  const loc=globalToLocation();if(!loc)return;
+  const transform=normalizeTransform(next);
+  if(state.project.motionMode!=='animate'){commitViewport(transform);return;}
+  if(state.playing)pauseSequence();
+  if(state.cameraDraft?.segmentId!==loc.segment.id||Math.abs(state.cameraDraft.time-loc.sourceTime)>.05)clearCameraDraft();
+  state.cameraDraft={segmentId:loc.segment.id,time:loc.sourceTime,transform};
+  loc.segment.__previewTransform=transform;
+  if(els.cameraDraftStatus)els.cameraDraftStatus.textContent='Uncommitted camera position · '+fmt(loc.globalTime)+' · press K';
+  els.zoom.value=transform.zoom;els.zoomValue.textContent=Math.round(transform.zoom*100)+'%';
+  draw();
+}
+function commitCameraKeyframe(){
+  if(state.exporting)return;
+  if(state.playing)pauseSequence();
+  const loc=globalToLocation();if(!loc)return toast('Add a clip before keyframing.',true);
+  if(state.project.motionMode!=='animate')return toast('Enable Animate mode in Motion first.',true);
+  const draft=state.cameraDraft?.segmentId===loc.segment.id?state.cameraDraft:null;
+  const time=draft?draft.time:loc.sourceTime;
+  const transform=draft?draft.transform:segmentMotionAt(loc.segment,time);
+  delete loc.segment.__previewTransform;
+  state.cameraDraft=null;
+  upsertKeyframe(loc.segment,time,transform);
+  if(els.cameraDraftStatus)els.cameraDraftStatus.textContent='Keyframe saved at '+fmt(sourceToGlobal(loc.segment,time));
+  syncInspector();draw();
+  toast('Camera keyframe saved: '+fmt(sourceToGlobal(loc.segment,time)));
+}
 
 function normalizeTransform(value, fallback){
   fallback=fallback||{x:.5,y:.5,zoom:1};
@@ -1186,7 +1224,7 @@ function applyStaticViewport(segment,sourceTime,next){
 }
 function commitViewport(transform){
   const loc=globalToLocation();if(!loc)return;delete loc.segment.__previewTransform;
-  if(state.project.motionMode==='animate')upsertKeyframe(loc.segment,loc.sourceTime,transform);else applyStaticViewport(loc.segment,loc.sourceTime,transform);
+  if(state.project.motionMode==='animate'){stageCameraTransform(transform);return;}applyStaticViewport(loc.segment,loc.sourceTime,transform);
   draw();syncInspector();
 }
 function clearMotion(){const segment=selectedSegment(),loc=globalToLocation();if(!segment)return;segment.baseTransform=loc&&loc.segment.id===segment.id?segmentMotionAt(segment,loc.sourceTime):normalizeTransform(segment.baseTransform);segment.motion=[];saveProject();renderKeyframes();renderTimeline();draw();syncInspector()}
@@ -1329,7 +1367,7 @@ function syncInspector(){
   const segment=selectedSegment(),loc=globalToLocation();els.noSegment.hidden=!!segment;els.clipControls.hidden=!segment;els.clipIndex.textContent=segment?(state.project.segments.findIndex(s=>s.id===segment.id)+1)+'/'+state.project.segments.length:'—';
   if(segment){els.speed.value=segment.speed;els.speedValue.textContent=segment.speed.toFixed(2)+'×';els.volume.value=segment.volume;els.volumeValue.textContent=Math.round(segment.volume*100)+'%';for(const item of [[els.videoFadeIn,els.videoFadeInValue,'videoFadeIn'],[els.videoFadeOut,els.videoFadeOutValue,'videoFadeOut'],[els.audioFadeIn,els.audioFadeInValue,'audioFadeIn'],[els.audioFadeOut,els.audioFadeOutValue,'audioFadeOut']]){const input=item[0],valueEl=item[1],key=item[2];input.max=Math.max(.1,segmentDuration(segment));input.value=segment[key];valueEl.textContent=segment[key].toFixed(1)+'s'}}
   els.aspect.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.aspect===state.project.aspect));els.fill.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.fill===state.project.fill));
-  if(els.motionMode)els.motionMode.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.mode===state.project.motionMode));if(els.autoKeyframe)els.autoKeyframe.checked=state.project.motionMode==='animate';if(els.autoHint)els.autoHint.textContent=state.project.motionMode==='animate'?'Viewport animation on':'Static viewport edit';
+  if(els.motionMode)els.motionMode.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.mode===state.project.motionMode));if(els.autoKeyframe)els.autoKeyframe.checked=state.project.motionMode==='animate';if(els.autoHint)els.autoHint.textContent=state.project.motionMode==='animate'?'Manual keyframe · K':'Static viewport edit';
   if(els.motionModeHelp)els.motionModeHelp.textContent=state.project.motionMode==='animate'?'Animate: drag or zoom at different times to create viewport keyframes.':'Static: drag or zoom changes the whole clip while preserving any existing animation offsets.';
   const motion=loc&&segment&&loc.segment.id===segment.id?segmentMotionAt(segment,loc.sourceTime):normalizeTransform(segment&&segment.baseTransform);els.zoom.value=motion.zoom;els.zoomValue.textContent=Math.round(motion.zoom*100)+'%';renderKeyframes();syncTextInspector();
   els.captionsEnabled.checked=state.project.captionsEnabled;els.captionSize.value=state.project.captionSize;els.captionSizeValue.textContent=Math.round(state.project.captionSize*100)+'%';const caps=segment&&segment.captions||[];els.captionCount.textContent=String(caps.length);els.captionSource.textContent=caps.length?(clipById(segment.clipId)&&clipById(segment.clipId).meta&&clipById(segment.clipId).meta.captionLanguage||'Source / imported'):'No captions'
@@ -1373,7 +1411,7 @@ async function handleAgent(command,params){
 // v0.5 controls
 if(els.librarySearch)els.librarySearch.addEventListener('input',()=>{state.librarySearchText=els.librarySearch.value;renderLibrary()});
 if(els.libraryNewFolder)els.libraryNewFolder.addEventListener('click',async()=>{const name=prompt('New folder name');if(name)await createLibraryFolder(name,state.activeFolderId)});
-if(els.motionMode)els.motionMode.addEventListener('click',event=>{const mode=event.target.closest('button')&&event.target.closest('button').dataset.mode;if(!mode)return;state.project.motionMode=mode==='static'?'static':'animate';state.project.autoKeyframe=state.project.motionMode==='animate';saveProject();syncInspector()});
+if(els.motionMode)els.motionMode.addEventListener('click',event=>{const mode=event.target.closest('button')&&event.target.closest('button').dataset.mode;if(!mode)return;state.project.motionMode=mode==='static'?'static':'animate';state.project.autoKeyframe=state.project.motionMode==='animate';clearCameraDraft();saveProject();syncInspector()});
 if(els.addEmoji)els.addEmoji.addEventListener('click',addEmojiLayer);if(els.newEmoji)els.newEmoji.addEventListener('click',addEmojiLayer);if(els.addImage)els.addImage.addEventListener('click',addImageLayer);if(els.newImage)els.newImage.addEventListener('click',addImageLayer);
 if(els.changeImage)els.changeImage.addEventListener('click',()=>{els.overlayImageFile.dataset.create='0';els.overlayImageFile.value='';els.overlayImageFile.click()});
 if(els.overlayImageFile)els.overlayImageFile.addEventListener('change',()=>overlayFileChosen(els.overlayImageFile.files&&els.overlayImageFile.files[0],els.overlayImageFile.dataset.create!=='1'));
@@ -1391,6 +1429,7 @@ document.addEventListener('pointerdown',event=>{if(els.libraryContextMenu&&!even
 // Capture-phase canvas interaction replaces v0.4 handlers without removing backward-compatible code.
 els.preview.addEventListener('pointerdown',event=>{
   const loc=globalToLocation();if(!loc)return;
+  if(state.playing)pauseSequence();
   const hit=overlayHit(event.clientX,event.clientY);
   if(hit){state.selectedSegmentId=loc.segment.id;state.selectedTextId=hit;setTool('text');switchPanel('text');syncInspector();renderTimeline()}
   const item=selectedText();
@@ -1413,13 +1452,13 @@ els.preview.addEventListener('pointermove',event=>{
 function v05CanvasEnd(event){
   const loc=globalToLocation();
   if(state.overlayDrag){event.preventDefault();event.stopImmediatePropagation();state.overlayDrag=false;const item=selectedText();if(item&&item.__previewTransform&&loc){const t={...item.__previewTransform};delete item.__previewTransform;commitOverlayTransform(item,loc.sourceTime,t)}try{els.preview.releasePointerCapture(event.pointerId)}catch(_){}return}
-  if(state.draggingCanvas){event.preventDefault();event.stopImmediatePropagation();state.draggingCanvas=false;els.preview.classList.remove('dragging');if(loc&&loc.segment.__previewTransform){const t={...loc.segment.__previewTransform};delete loc.segment.__previewTransform;commitViewport(t)}try{els.preview.releasePointerCapture(event.pointerId)}catch(_){}}
+  if(state.draggingCanvas){event.preventDefault();event.stopImmediatePropagation();state.draggingCanvas=false;els.preview.classList.remove('dragging');if(loc&&loc.segment.__previewTransform){const t={...loc.segment.__previewTransform};delete loc.segment.__previewTransform;stageCameraTransform(t)}try{els.preview.releasePointerCapture(event.pointerId)}catch(_){}}
 }
 els.preview.addEventListener('pointerup',v05CanvasEnd,{capture:true});els.preview.addEventListener('pointercancel',v05CanvasEnd,{capture:true});
 els.preview.addEventListener('wheel',event=>{
   const loc=globalToLocation();if(!loc)return;
   if(state.tool==='text'&&selectedText()){event.preventDefault();event.stopImmediatePropagation();const item=selectedText(),t=overlayTransformAt(item,loc.sourceTime);t.scale=clamp(t.scale*(event.deltaY<0?1.06:.94),.1,8);commitOverlayTransform(item,loc.sourceTime,t);return}
-  if(state.tool==='select'){event.preventDefault();event.stopImmediatePropagation();const t=segmentMotionAt(loc.segment,loc.sourceTime);t.zoom=clamp(t.zoom*(event.deltaY<0?1.06:.94),1,3);commitViewport(t)}
+  if(state.tool==='select'){event.preventDefault();event.stopImmediatePropagation();const t=segmentMotionAt(loc.segment,loc.sourceTime);t.zoom=clamp(t.zoom*(event.deltaY<0?1.06:.94),1,3);stageCameraTransform(t)}
 },{capture:true,passive:false});
 
 
@@ -1436,7 +1475,7 @@ els.contextMenu.addEventListener('click',event=>{const action=event.target.datas
 els.organize.addEventListener('click',()=>{state.organizing=!state.organizing;state.selectedLibrary.clear();updateBulkBar();renderLibrary()});els.bulkDone.addEventListener('click',()=>{state.organizing=false;state.selectedLibrary.clear();updateBulkBar();renderLibrary()});els.folderFilter.addEventListener('change',()=>{state.folderFilter=els.folderFilter.value;renderLibrary()});els.moveFolder.addEventListener('change',async()=>{if(!state.selectedLibrary.size||!els.moveFolder.value)return;await moveClipsToFolder([...state.selectedLibrary],els.moveFolder.value==='none'?null:els.moveFolder.value);state.selectedLibrary.clear();els.moveFolder.value='';await refreshLibrary(false);toast('Clips moved.');});els.newFolder.addEventListener('click',async()=>{const name=prompt('New folder name');if(!name?.trim())return;const folder={id:uuid(),name:name.trim(),createdAt:Date.now()};await putRecord('folders',folder);if(state.selectedLibrary.size)await moveClipsToFolder([...state.selectedLibrary],folder.id);state.selectedLibrary.clear();await refreshLibrary(false);toast(`Folder “${folder.name}” created.`)});
 
 for(const [input,key,valueEl,max] of [[els.speed,'speed',els.speedValue,3],[els.volume,'volume',els.volumeValue,2],[els.videoFadeIn,'videoFadeIn',els.videoFadeInValue,99],[els.videoFadeOut,'videoFadeOut',els.videoFadeOutValue,99],[els.audioFadeIn,'audioFadeIn',els.audioFadeInValue,99],[els.audioFadeOut,'audioFadeOut',els.audioFadeOutValue,99]])input.addEventListener('input',()=>{const value=Number(input.value);setSegmentNumber(key,value,0,max);if(key==='speed')valueEl.textContent=`${value.toFixed(2)}×`;else if(key==='volume')valueEl.textContent=`${Math.round(value*100)}%`;else valueEl.textContent=`${value.toFixed(1)}s`});
-els.aspect.addEventListener('click',event=>{const aspect=event.target.closest('button')?.dataset.aspect;if(!aspect)return;state.project.aspect=aspect;saveProject();els.stage.className=`stage ratio-${aspect.replace(':','-')}`;syncInspector();requestAnimationFrame(resizePreview)});els.fill.addEventListener('click',event=>{const fill=event.target.closest('button')?.dataset.fill;if(!fill)return;state.project.fill=fill;saveProject();syncInspector();draw()});els.autoKeyframe.addEventListener('change',()=>{state.project.autoKeyframe=els.autoKeyframe.checked;saveProject();syncInspector()});els.zoom.addEventListener('input',()=>{const loc=globalToLocation();if(!loc)return;const current=segmentMotionAt(loc.segment,loc.sourceTime);commitViewport({...current,zoom:Number(els.zoom.value)});els.zoomValue.textContent=`${Math.round(Number(els.zoom.value)*100)}%`});els.addKeyframe.addEventListener('click',()=>{const loc=globalToLocation();if(!loc)return;upsertKeyframe(loc.segment,loc.sourceTime,segmentMotionAt(loc.segment,loc.sourceTime))});els.removeKeyframe.addEventListener('click',removeNearestKeyframe);els.clearKeyframes.addEventListener('click',clearMotion);els.resetFrame.addEventListener('click',()=>{const loc=globalToLocation();if(!loc)return;upsertKeyframe(loc.segment,loc.sourceTime,{x:.5,y:.5,zoom:1});draw()});
+els.aspect.addEventListener('click',event=>{const aspect=event.target.closest('button')?.dataset.aspect;if(!aspect)return;state.project.aspect=aspect;saveProject();els.stage.className=`stage ratio-${aspect.replace(':','-')}`;syncInspector();requestAnimationFrame(resizePreview)});els.fill.addEventListener('click',event=>{const fill=event.target.closest('button')?.dataset.fill;if(!fill)return;state.project.fill=fill;saveProject();syncInspector();draw()});els.autoKeyframe.addEventListener('change',()=>{state.project.autoKeyframe=els.autoKeyframe.checked;saveProject();syncInspector()});els.zoom.addEventListener('input',()=>{const loc=globalToLocation();if(!loc)return;const current=segmentMotionAt(loc.segment,loc.sourceTime);stageCameraTransform({...current,zoom:Number(els.zoom.value)});els.zoomValue.textContent=`${Math.round(Number(els.zoom.value)*100)}%`});els.addKeyframe.addEventListener('click',commitCameraKeyframe);els.removeKeyframe.addEventListener('click',removeNearestKeyframe);els.clearKeyframes.addEventListener('click',clearMotion);els.resetFrame.addEventListener('click',()=>{const loc=globalToLocation();if(!loc)return;upsertKeyframe(loc.segment,loc.sourceTime,{x:.5,y:.5,zoom:1});draw()});
 
 els.textContent.addEventListener('input',()=>updateText({text:els.textContent.value}));els.fontFamily.addEventListener('change',()=>updateText({fontFamily:els.fontFamily.value}));els.fontSize.addEventListener('input',()=>updateText({fontSize:clamp(Number(els.fontSize.value)||64,12,240)}));els.fontColor.addEventListener('input',()=>updateText({color:els.fontColor.value}));els.textStart.addEventListener('change',()=>updateText({start:Number(els.textStart.value)}));els.textEnd.addEventListener('change',()=>updateText({end:Number(els.textEnd.value)}));els.textFadeIn.addEventListener('change',()=>updateText({fadeIn:Math.max(0,Number(els.textFadeIn.value)||0)}));els.textFadeOut.addEventListener('change',()=>updateText({fadeOut:Math.max(0,Number(els.textFadeOut.value)||0)}));els.deleteText.addEventListener('click',deleteTextLayer);els.loadFonts.addEventListener('click',loadSystemFonts);
 
@@ -1444,13 +1483,28 @@ els.captionsEnabled.addEventListener('change',()=>{state.project.captionsEnabled
 
 els.preview.addEventListener('pointerdown',event=>{const loc=globalToLocation();if(!loc)return;if(state.tool==='text'&&selectedText()){state.textDrag=true;els.preview.setPointerCapture(event.pointerId);const r=els.preview.getBoundingClientRect();updateText({x:clamp((event.clientX-r.left)/r.width,0,1),y:clamp((event.clientY-r.top)/r.height,0,1)});return}if(state.tool!=='select')return;state.draggingCanvas=true;els.preview.classList.add('dragging');els.preview.setPointerCapture(event.pointerId);state.dragStart={x:event.clientX,y:event.clientY};state.transformStart={...segmentMotionAt(loc.segment,loc.sourceTime)}});els.preview.addEventListener('pointermove',event=>{if(state.textDrag&&selectedText()){const r=els.preview.getBoundingClientRect();updateText({x:clamp((event.clientX-r.left)/r.width,0,1),y:clamp((event.clientY-r.top)/r.height,0,1)});return}if(!state.draggingCanvas)return;const r=els.preview.getBoundingClientRect(),dx=(event.clientX-state.dragStart.x)/Math.max(1,r.width),dy=(event.clientY-state.dragStart.y)/Math.max(1,r.height);const t={...state.transformStart,x:clamp(state.transformStart.x-dx/Math.max(1,state.transformStart.zoom),0,1),y:clamp(state.transformStart.y-dy/Math.max(1,state.transformStart.zoom),0,1)};state.previewTransform=t;const loc=globalToLocation();if(loc){const original=loc.segment.motion;loc.segment.__previewMotion=t;drawFrame(els.preview.getContext('2d',{alpha:false}),els.preview.width,els.preview.height,{...loc,segment:{...loc.segment,motion:[{time:loc.sourceTime,...t}]}});loc.segment.motion=original}});function endCanvas(event){if(state.textDrag){state.textDrag=false;return}if(!state.draggingCanvas)return;state.draggingCanvas=false;els.preview.classList.remove('dragging');try{els.preview.releasePointerCapture(event.pointerId)}catch(_){}if(state.previewTransform){commitViewport(state.previewTransform);state.previewTransform=null}}els.preview.addEventListener('pointerup',endCanvas);els.preview.addEventListener('pointercancel',endCanvas);els.preview.addEventListener('wheel',event=>{if(state.tool!=='select')return;event.preventDefault();const loc=globalToLocation();if(!loc)return;const t=segmentMotionAt(loc.segment,loc.sourceTime);t.zoom=clamp(t.zoom*(event.deltaY<0?1.06:.94),1,3);commitViewport(t)},{passive:false});
 
-window.addEventListener('resize',()=>{resizePreview();drawWaveform()});document.addEventListener('keydown',event=>{if(event.target&&['INPUT','TEXTAREA','SELECT'].includes(event.target.tagName))return;if(event.code==='Space'){event.preventDefault();playSequence()}else if(event.key==='c'||event.key==='C')setTool('cut');else if(event.key==='v'||event.key==='V')setTool('select');else if(event.key==='t'||event.key==='T')addTextLayer();else if(event.key==='Delete'&&state.selectedTextId)deleteTextLayer();else if(event.key==='Delete'&&state.selectedSegmentId)removeSegment(state.selectedSegmentId);else if(event.key==='Escape'){closePicker();closeContextMenu();setTool('select')}else if(event.key==='s'||event.key==='S')splitSegment()});
+window.addEventListener('resize',()=>{resizePreview();drawWaveform()});document.addEventListener('keydown',event=>{
+  if(state.exportDialog&&!state.exportDialog.hidden)return;
+  if(event.ctrlKey||event.metaKey||event.altKey||event.repeat)return;
+  if(event.target&&['INPUT','TEXTAREA','SELECT'].includes(event.target.tagName))return;
+  const code=event.code;
+  if(code===state.shortcutKeys.play){event.preventDefault();playSequence();return;}
+  if(code===state.shortcutKeys.keyframe){event.preventDefault();commitCameraKeyframe();return;}
+  if(code===state.shortcutKeys.cut){event.preventDefault();setTool('cut');return;}
+  if(code===state.shortcutKeys.select){event.preventDefault();setTool('select');return;}
+  if(code===state.shortcutKeys.split){event.preventDefault();splitSegment();return;}
+  if(code==='Delete'&&state.selectedTextId){deleteTextLayer();return;}
+  if(code==='Delete'&&state.selectedSegmentId){removeSegment(state.selectedSegmentId);return;}
+  if(code==='Escape'){clearCameraDraft();closePicker();closeContextMenu();setTool('select');draw();}
+});
 
 chrome.runtime.onMessage.addListener((message,_sender,sendResponse)=>{if(message?.type==='CLIP_LIBRARY_CHANGED'){refreshLibrary(false).then(()=>toast('New clip added to Library.'));return}if(message?.type==='AGENT_STUDIO_COMMAND'){handleAgent(message.command,message.params||{}).then(sendResponse).catch(error=>sendResponse({ok:false,error:error?.message||String(error)}));return true}});
 
 async function refreshLibrary(selectNewest=false){const oldIds=new Set(state.clips.map(c=>c.id));state.clips=(await getAll('clips')).sort((a,b)=>b.createdAt-a.createdAt);state.folders=(await getAll('folders')).sort((a,b)=>a.name.localeCompare(b.name));state.project.segments=state.project.segments.filter(s=>clipById(s.clipId));if(selectNewest&&state.clips[0]&&!oldIds.has(state.clips[0].id))await insertClip(state.clips[0].id,state.project.segments.length);renderAll();if(state.project.segments.length&&!state.loadedSegmentId)await seekGlobal(clamp(state.globalTime,0,totalDuration()),true)}
 
 async function init(){
+  const savedShortcuts=await chrome.storage.local.get('clippah:shortcuts');
+  state.shortcutKeys={...state.shortcutKeys,...(savedShortcuts['clippah:shortcuts']||{})};
   state.clips=(await getAll('clips')).sort((a,b)=>b.createdAt-a.createdAt);state.folders=(await getAll('folders')).sort((a,b)=>a.name.localeCompare(b.name));await loadProject();state.selectedSegmentId=state.project.segments[0]?.id||null;populateFonts();renderAll();els.stage.className=`stage ratio-${state.project.aspect.replace(':','-')}`;if(state.project.segments.length)await seekGlobal(0,true);else renderTimeline();
 }
 init();
