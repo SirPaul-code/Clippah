@@ -24,6 +24,9 @@ jobs:
           node --check offscreen.js
           node --check editor.js
           node --check options.js
+          node --check updater.js
+          node --test tests/updater.test.cjs
+          node -e "const fs=require('fs');const r=require('./runtime-files.json');if(r.schema!==1)throw Error('Invalid runtime schema');for(const p of r.files){if(!fs.existsSync(p))throw Error('Missing runtime file: '+p)}if(!r.files.includes('updater.js'))throw Error('Updater missing from install bundle')"
           node --check mcp/server.js
 
       - name: Validate MCP server dependencies
@@ -51,7 +54,7 @@ jobs:
         shell: bash
         run: |
           version="${{ steps.meta.outputs.version }}"
-          zip -qr "dist/Clippah-v${version}-full.zip" .             -x ".git/*"                "dist/*"                "mcp/node_modules/*"                ".staging/*"
+          zip -qr "dist/Clippah-v${version}-full.zip" . -x '.git/*' 'dist/*' 'mcp/node_modules/*' '.staging/*'
 
       - uses: actions/upload-artifact@v4
         with:
