@@ -129,15 +129,35 @@
     }
   }
 
-  async function writeFileBytes(rootHandle,path,bytes) {
-    const {file} = await getFileHandle(rootHandle,path,true);
-    const stream = await file.createWritable();
-    try {
+  function describeFileFailure(error,phase,path){
+    const original=String(error?.message||error||'Unknown I/O error');
+    const wrapped=new Error('Failed to '+phase+' "'+path+'": '+original);
+    wrapped.name=error?.name||'FileUpdateError';
+    wrapped.file=path;
+    wrapped.phase=phase;
+    wrapped.securityBlocked=/aborted due to security policy|blocked by safe browsing|virus detected|malware|blocked by your organization|securityerror/i.test(original);
+    return wrapped;
+  }
+
+  function sameBytes(a,b){
+    if(!a||!b||a.byteLength!==b.byteLength)return false;
+    for(let i=0;i<a.byteLength;i++)if(a[i]!==b[i])return false;
+    return true;
+  }
+
+  async function writeFileBytes(rootHandle,path,bytes){
+    let file,stream,phase='open';
+    try{
+      ({file}=await getFileHandle(rootHandle,path,true));
+      phase='create writable';
+      stream=await file.createWritable();
+      phase='write';
       await stream.write(bytes);
+      phase='finalize';
       await stream.close();
-    } catch (error) {
-      try {await stream.abort();} catch (_) {}
-      throw error;
+    }catch(error){
+      if(stream)try{await stream.abort()}catch(_){}
+      throw describeFileFailure(error,phase,path);
     }
   }
 
@@ -164,41 +184,72 @@
     return true;
   }
 
-  async function installPrepared(folder,release,progress = () => {}) {
-    const files = validateFileList({schema:1,files:release.files});
-    if (!release.downloaded || files.some(path => !release.downloaded.has(path)))
+  async function installPrepared(folder,release,progress = () => {}){
+    const files=validateFileList({schema:1,files:release.files});
+    if(!release.downloaded||files.some(path=>!release.downloaded.has(path)))
       throw new Error('Update cannot start until all files have been downloaded and verified.');
-    // Use manifest.json last: the recorded on-disk version changes only after all other files.
-    const order = [...files.filter(name => name !== 'manifest.json'),'manifest.json'];
-    const backup = new Map();
-    for (const path of order) backup.set(path,await readFileBytes(folder,path));
-    const updated = [];
-    try {
-      for (const path of order) {
-        const data = release.downloaded.get(path);
-        await writeFileBytes(folder,path,data);
-        updated.push(path);
-        progress({phase:'install',current:updated.length,total:order.length,path});
-      }
-      for (const path of order) {
-        const actual = await readFileBytes(folder,path);
-        if (!actual || await sha256(actual) !== await sha256(release.downloaded.get(path)))
-          throw new Error('Post-install verification failed for '+path);
-      }
-    } catch (error) {
-      const failedRollbacks = [];
-      for (const path of [...updated].reverse()) {
-        try {
-          const old = backup.get(path);
-          if (old === null) await removeNewFile(folder,path);
-          else await writeFileBytes(folder,path,old);
-        } catch (restoreError) { failedRollbacks.push(path+': '+restoreError.message); }
-      }
-      if (failedRollbacks.length)
-        throw new Error(error.message + '. Rollback was incomplete: '+failedRollbacks.join('; ')+'. Restore the extension-only ZIP manually.');
-      throw new Error(error.message+'. Previous extension files were restored.');
+    const order=[...files.filter(name=>name!=='manifest.json'),'manifest.json'];
+    const backup=new Map();
+    // Snapshot every original before mutating anything.
+    for(const path of order){
+      try{backup.set(path,await readFileBytes(folder,path))}
+      catch(error){throw describeFileFailure(error,'read original',path)}
     }
-    return {version:release.version,updated:order.length};
+    const modified=[];
+    let attempted=null;
+    try{
+      for(const path of order){
+        attempted=path;
+        const data=release.downloaded.get(path);
+        if(sameBytes(backup.get(path),data)){
+          progress({phase:'unchanged',current:modified.length,total:order.length,path});
+          continue;
+        }
+        progress({phase:'writing',current:modified.length,total:order.length,path});
+        await writeFileBytes(folder,path,data);
+        modified.push(path);
+        progress({phase:'install',current:modified.length,total:order.length,path});
+      }
+      for(const path of order){
+        let actual;
+        try{actual=await readFileBytes(folder,path)}
+        catch(error){throw describeFileFailure(error,'verify installed',path)}
+        if(!sameBytes(actual,release.downloaded.get(path)))
+          throw describeFileFailure(new Error('Installed file checksum does not match downloaded file'),'verify installed',path);
+      }
+    }catch(error){
+      // A failed createWritable/close can leave a new empty or partial file even
+      // if the operation rejected. Restore the attempted path as well.
+      const recovery=[...modified];
+      if(attempted&&!recovery.includes(attempted))recovery.push(attempted);
+      const notRestored=[];
+      for(const path of recovery.reverse()){
+        try{
+          const original=backup.get(path);
+          const current=await readFileBytes(folder,path);
+          if(original===null){
+            if(current!==null)await removeNewFile(folder,path);
+          }else if(!sameBytes(current,original)){
+            await writeFileBytes(folder,path,original);
+          }
+          const check=await readFileBytes(folder,path);
+          if(original===null?check!==null:!sameBytes(check,original))
+            throw new Error('Original file differs after rollback');
+        }catch(restoreError){notRestored.push(path+': '+(restoreError?.message||String(restoreError)))}
+      }
+      const restored=notRestored.length===0;
+      const status=restored
+        ?'Previous extension files were verified restored.'
+        :'ROLLBACK INCOMPLETE for '+notRestored.join('; ')+'. Do not reload the extension. Restore the release ZIP manually.';
+      const wrapped=new Error((error?.message||String(error))+'. '+status);
+      wrapped.failedFile=error?.file||attempted;
+      wrapped.failedPhase=error?.phase||'install';
+      wrapped.securityBlocked=Boolean(error?.securityBlocked)||
+        /aborted due to security policy|blocked by safe browsing|virus detected|malware|securityerror/i.test(error?.message||'');
+      wrapped.rollbackVerified=restored;
+      throw wrapped;
+    }
+    return {version:release.version,updated:modified.length};
   }
 
   function openDb() {
