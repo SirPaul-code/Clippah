@@ -38,11 +38,22 @@
     </section>
 
     <section class="card">
-      <h2>Extension updates</h2>
-      <p>Check GitHub for a newer release. Chrome cannot silently replace a Load unpacked extension, so installation still requires replacing the unpacked files and clicking Reload. Do not remove your current extension or local clips.</p>
-      <div class="status-row"><span id="update-status">Not checked yet</span><span class="spacer"></span><button id="check-updates" type="button">Check for updates</button></div>
-      <p id="update-details" class="update-details"></p>
-      <a id="update-link" href="https://github.com/SirPaul-code/Clippah" target="_blank" rel="noopener noreferrer" hidden>Open latest version on GitHub</a>
+      <span class="eyebrow">ONE-TIME FOLDER ACCESS</span>
+      <h2>In-app updates</h2>
+      <p>Install future versions here without downloading another ZIP. First link the <strong>exact folder</strong> selected in Chrome's Load unpacked dialog. The folder must contain Clippah's <code>manifest.json</code>. Your clips and local project storage stay in the same extension.</p>
+      <div class="update-actions">
+        <button id="link-update-folder" type="button">Choose extension folder</button>
+        <button id="unlink-update-folder" type="button" class="secondary-button">Unlink folder</button>
+        <span id="update-folder-name">Not linked</span>
+      </div>
+      <div class="update-actions">
+        <button id="check-updates" type="button">Check for updates</button>
+        <button id="install-update" type="button" hidden>Install update</button>
+      </div>
+      <div id="update-progress" class="update-progress" role="progressbar" aria-label="Update progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><div id="update-progress-bar"></div></div>
+      <div class="update-message"><strong id="update-status" aria-live="polite">Not checked yet</strong><p id="update-details" class="update-details"></p></div>
+      <a id="update-link" href="https://github.com/SirPaul-code/Clippah" target="_blank" rel="noopener noreferrer" hidden>View version on GitHub</a>
+      <p class="note">Chrome may ask to renew write access after a restart. No admin rights or separate updater program is needed. Keep Clippah Studio closed while applying an update.</p>
     </section>
 
     <section class="card compact">
@@ -52,5 +63,6 @@
     </section>
   </main>
   <script src="options.js"></script>
+  <script src="updater.js"></script>
 </body>
 </html>
