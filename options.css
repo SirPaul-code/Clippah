@@ -8,3 +8,15 @@
 #update-link{display:inline-block;margin-top:12px;color:#a99dff;font-weight:750}
 #update-link[hidden]{display:none}
 @media(max-width:650px){.shortcuts-grid{grid-template-columns:1fr}}
+
+.update-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:16px}
+.update-actions button{flex:none}
+.update-actions #install-update{background:#4e3dcc;border-color:#a294ff}
+.update-actions #install-update[hidden],.update-progress[hidden]{display:none}
+.update-actions #update-folder-name{font-size:12px;color:#aab2c3;overflow-wrap:anywhere}
+.secondary-button{background:transparent!important;color:#c6cce0!important;border-color:#343d4d!important}
+.update-progress{height:12px;border:1px solid #414963;background:#232838;border-radius:999px;overflow:hidden;margin-top:20px}
+#update-progress-bar{width:0;height:100%;background:linear-gradient(90deg,#6e58ef,#a69aff);transition:width .2s ease}
+.update-message{margin-top:16px}
+#update-status{font-size:13px}
+.update-details{overflow-wrap:anywhere}
