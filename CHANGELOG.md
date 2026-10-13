@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — 2026-10-13
+
+- Larger video timeline with horizontal zoom, Fit button, easier time-zero access and a draggable ruler/scrubbing.
+- Dedicated M1 Camera animation track, visual keyframe thumbnails, zoom curve and individually draggable keyframes.
+- Exact numeric keyframe time and zoom edit, previous/next navigation and removal of the selected keyframe.
+- Camera changes are staged as a draft, not keyframed on each drag/scroll. Space commits the draft before playing; configurable K manually commits. Zoom is anchored near the mouse pointer.
+- Floating recording panel no longer appears automatically on video pages. It appears only after the user enables Clippah capture with the extension icon for that tab; fully stops when switched OFF.
+- Free previews and WebM exports include the canvas-rendered Clippah watermark; server-verified Pro removes it. Local JS can always be modified by end users, so this is an honest license gate rather than tamper-proof DRM.
+- Postgres-based license API scaffolding (activation, 2-seat limit, verify, revoke, manual issuance) prepared, but not deployed. Pro activation remains unconfigured until HTTPS backend and payment processing are set up.
+- Runtime-only update package includes all new files, compatible with the in-app updater introduced in 0.5.3.
+
 ## 0.5.3 — 2026-10-13
 
 - One-time manual installation followed by user-initiated in-app updates.
