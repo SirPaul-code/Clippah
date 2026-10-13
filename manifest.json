@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Clippah",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Clip, cut, animate, organize and assemble browser video locally.",
   "minimum_chrome_version": "116",
   "message_serialization": "structured_clone",
