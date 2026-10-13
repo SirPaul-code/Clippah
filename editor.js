@@ -1720,6 +1720,27 @@ els.timeline.addEventListener('pointerdown',event=>{
   event.preventDefault();
   requestScrub(timelineTimeFromClient(event.clientX));
 });
+els.motionTrack.addEventListener('pointerdown',event=>{
+  if(event.button!==0||event.target.closest('.motion-keyframe'))return;
+  event.preventDefault();event.stopPropagation();
+  requestScrub(timelineTimeFromClient(event.clientX));
+  els.motionTrack.setPointerCapture(event.pointerId);
+  const move=e=>{
+    if(e.pointerId!==event.pointerId)return;
+    requestScrub(timelineTimeFromClient(e.clientX));
+  };
+  const stop=e=>{
+    if(e.pointerId!==event.pointerId)return;
+    els.motionTrack.removeEventListener('pointermove',move);
+    els.motionTrack.removeEventListener('pointerup',stop);
+    els.motionTrack.removeEventListener('pointercancel',stop);
+    try{els.motionTrack.releasePointerCapture(event.pointerId)}catch(_){}
+    requestScrub(timelineTimeFromClient(e.clientX));
+  };
+  els.motionTrack.addEventListener('pointermove',move);
+  els.motionTrack.addEventListener('pointerup',stop);
+  els.motionTrack.addEventListener('pointercancel',stop);
+});
 els.ruler.addEventListener('pointerdown',event=>{
   if(event.button!==0)return;
   event.preventDefault();event.stopPropagation();
