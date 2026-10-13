@@ -8,7 +8,7 @@
   const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
   const safeDuration=value=>Math.max(0,Number(value)||0);
   function widthForTimeline(viewportWidth,duration,pixelsPerSecond,label=96){
-    const content=Math.ceil(safeDuration(duration)*clamp(pixelsPerSecond,12,180));
+    const content=Math.ceil(safeDuration(duration)*clamp(pixelsPerSecond,2,180));
     return clamp(Math.max(Math.round(viewportWidth)||0,label+content),label+100,100000);
   }
   function timeForPoint(clientX,left,width,duration){
