@@ -56,10 +56,14 @@ jobs:
           version="${{ steps.meta.outputs.version }}"
           zip -qr "dist/Clippah-v${version}-full.zip" . -x '.git/*' 'dist/*' 'mcp/node_modules/*' '.staging/*'
 
+      - name: Prepare unpacked extension for one-step installation
+        run: |
+          node -e "const fs=require('fs'),path=require('path');for(const f of require('./runtime-files.json').files){const dest=path.join('dist','install',f);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(f,dest)}"
+
       - uses: actions/upload-artifact@v4
         with:
           name: Clippah-v${{ steps.meta.outputs.version }}
-          path: dist/Clippah-v${{ steps.meta.outputs.version }}.zip
+          path: dist/install/
           if-no-files-found: error
 
       - name: Upload full bundle artifact
