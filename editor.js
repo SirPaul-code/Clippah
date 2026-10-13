@@ -492,7 +492,7 @@ function drawFrame(ctx,w,h,location=globalToLocation(),opts={}){
     const target=w/h;let sw=src.sw,sh=src.sh;if(src.sw/src.sh>target)sw=src.sh*target;else sh=src.sw/target;sw/=motion.zoom;sh/=motion.zoom;const sx=src.sx+clamp(motion.x,0,1)*(src.sw-sw),sy=src.sy+clamp(motion.y,0,1)*(src.sh-sh);ctx.drawImage(els.source,sx,sy,sw,sh,0,0,w,h);
   }
   ctx.restore();
-  for(const text of segment.texts||[])drawText(ctx,text,w,h,sourceTime,text.id===state.selectedTextId&&opts.guides!==false);
+  for(const text of segment.texts||[])drawText(ctx,text,w,h,sourceTime,opts.guides!==false&&text.id===state.selectedTextId);
   drawCaption(ctx,activeCaption(segment,sourceTime),w,h);
 }
 function resizePreview(){if(els.stage.hidden)return;const r=els.stage.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);els.preview.width=Math.max(2,Math.round(r.width*dpr));els.preview.height=Math.max(2,Math.round(r.height*dpr));draw();}
@@ -971,10 +971,10 @@ function clearCameraDraft(){
   if(els.cameraDraftStatus)els.cameraDraftStatus.textContent='K = save keyframe';
 }
 function stageCameraTransform(next){
+  if(state.playing)pauseSequence();
   const loc=globalToLocation();if(!loc)return;
   const transform=normalizeTransform(next);
   if(state.project.motionMode!=='animate'){commitViewport(transform);return;}
-  if(state.playing)pauseSequence();
   if(state.cameraDraft?.segmentId!==loc.segment.id||Math.abs(state.cameraDraft.time-loc.sourceTime)>.05)clearCameraDraft();
   state.cameraDraft={segmentId:loc.segment.id,time:loc.sourceTime,transform};
   loc.segment.__previewTransform=transform;
