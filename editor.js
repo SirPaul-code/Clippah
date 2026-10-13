@@ -8,9 +8,9 @@ const els = {
   projectTitle: $('#project-title'), projectMeta: $('#project-meta'), export: $('#export'), exportStatus: $('#export-status'), exportDialog: $('#export-dialog'), exportTitle: $('#export-title'), exportSpinner: $('#export-spinner'), exportPhase: $('#export-phase'), exportPercent: $('#export-percent'), exportPosition: $('#export-position'), exportEta: $('#export-eta'), exportProgressTrack: $('#export-progress-track'), exportProgressBar: $('#export-progress-bar'), exportFile: $('#export-file'), exportBytes: $('#export-bytes'), exportDetail: $('#export-detail'), exportClose: $('#export-close'), settings: $('#settings'),
   refresh: $('#refresh'), folderFilter: $('#folder-filter'), organize: $('#organize'), bulkBar: $('#bulk-bar'), bulkCount: $('#bulk-count'), moveFolder: $('#move-folder'), newFolder: $('#new-folder'), bulkDone: $('#bulk-done'), clipList: $('#clip-list'),
   toolSelect: $('#tool-select'), toolCut: $('#tool-cut'), addText: $('#add-text'), viewerShell: $('#viewer-shell'), emptyState: $('#empty-state'), stage: $('#stage'), preview: $('#preview'), viewerGuides: $('#viewer-guides'), autoHint: $('#auto-hint'),
-  play: $('#play'), time: $('#time'), duration: $('#duration'), splitAtPlayhead: $('#split-at-playhead'), deleteSegment: $('#delete-segment'), timeline: $('#timeline'), ruler: $('#ruler'), videoTrack: $('#video-track'), waveform: $('#waveform'), audioFades: $('#audio-fades'), textTrack: $('#text-track'), captionTrack: $('#caption-track'), playhead: $('#playhead'),
+  play: $('#play'), time: $('#time'), duration: $('#duration'), splitAtPlayhead: $('#split-at-playhead'), deleteSegment: $('#delete-segment'), timeline: $('#timeline'), timelineViewport: $('#timeline-viewport'), timelineZoom: $('#timeline-zoom'), timelineZoomLabel: $('#timeline-zoom-label'), timelineFit: $('#timeline-fit'), motionTrack: $('#motion-track'), motionKeyframes: $('#motion-keyframes'), motionCurve: $('#motion-curve'), videoTrack: $('#video-track'), waveform: $('#waveform'), audioFades: $('#audio-fades'), textTrack: $('#text-track'), captionTrack: $('#caption-track'), playhead: $('#playhead'),
   inspectorTabs: $$('.inspector-tabs button'), panels: $$('.inspector-panel'), clipIndex: $('#clip-index'), noSegment: $('#no-segment'), clipControls: $('#clip-controls'), speed: $('#speed'), speedValue: $('#speed-value'), volume: $('#volume'), volumeValue: $('#volume-value'), videoFadeIn: $('#video-fade-in'), videoFadeInValue: $('#video-fade-in-value'), videoFadeOut: $('#video-fade-out'), videoFadeOutValue: $('#video-fade-out-value'), audioFadeIn: $('#audio-fade-in'), audioFadeInValue: $('#audio-fade-in-value'), audioFadeOut: $('#audio-fade-out'), audioFadeOutValue: $('#audio-fade-out-value'), clipSplit: $('#clip-split'), clipRemove: $('#clip-remove'),
-  resetFrame: $('#reset-frame'), aspect: $('#aspect'), fill: $('#fill'), zoom: $('#zoom'), zoomValue: $('#zoom-value'), autoKeyframe: $('#auto-keyframe'), keyframeCount: $('#keyframe-count'), keyframeList: $('#keyframe-list'), addKeyframe: $('#add-keyframe'), removeKeyframe: $('#remove-keyframe'), clearKeyframes: $('#clear-keyframes'),
+  resetFrame: $('#reset-frame'), aspect: $('#aspect'), fill: $('#fill'), zoom: $('#zoom'), zoomValue: $('#zoom-value'), autoKeyframe: $('#auto-keyframe'), keyframeCount: $('#keyframe-count'), keyframeList: $('#keyframe-list'), addKeyframe: $('#add-keyframe'), removeKeyframe: $('#remove-keyframe'), clearKeyframes: $('#clear-keyframes'), cameraAutocommit: $('#camera-autocommit'), selectedCameraKeyframe: $('#selected-camera-keyframe'), cameraKeyframeTime: $('#camera-keyframe-time'), cameraKeyframeZoom: $('#camera-keyframe-zoom'), cameraKeyframePrev: $('#camera-keyframe-prev'), cameraKeyframeNext: $('#camera-keyframe-next'), cameraKeyframeDelete: $('#camera-keyframe-delete'),
   newText: $('#new-text'), noText: $('#no-text'), textControls: $('#text-controls'), textContent: $('#text-content'), loadFonts: $('#load-fonts'), fontFamily: $('#font-family'), fontHint: $('#font-hint'), fontSize: $('#font-size'), fontColor: $('#font-color'), textStart: $('#text-start'), textEnd: $('#text-end'), textFadeIn: $('#text-fade-in'), textFadeOut: $('#text-fade-out'), deleteText: $('#delete-text'),
   captionsEnabled: $('#captions-enabled'), captionSize: $('#caption-size'), captionSizeValue: $('#caption-size-value'), captionCount: $('#caption-count'), captionSource: $('#caption-source'), importCaptions: $('#import-captions'), exportCaptions: $('#export-captions'), captionFile: $('#caption-file'),
   picker: $('#picker'), pickerClose: $('#picker-close'), pickerList: $('#picker-list'), contextMenu: $('#context-menu'), toast: $('#toast'), source: $('#source')
@@ -22,7 +22,7 @@ const state = {
   selectedSegmentId: null, selectedTextId: null, tool: 'select', globalTime: 0, playing: false, playRaf: 0,
   sourceUrl: null, loadedSegmentId: null, sourceReady: false, draggingCanvas: false, dragStart: null, transformStart: null, textDrag: false,
   waveformCache: new Map(), waveformPending: new Set(), saveTimer: 0, toastTimer: 0, pendingInsertIndex: null, dragInsertIndex: null,
-  playToken: 0, playRequestPending: false, seekRequest: 0, cameraDraft: null, shortcutKeys: {play:'Space',keyframe:'KeyK',cut:'KeyC',select:'KeyV',split:'KeyS'}, exporting: false, exportCancelled: false, exportDownloadId: null, exportStartTime: 0, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
+  playToken: 0, playRequestPending: false, seekRequest: 0, cameraDraft: null, selectedCameraKeyframeId: null, lastCreatedKeyframeId: null, timelinePixelsPerSecond: 32, activeKeyframeDrag: null, shortcutKeys: {play:'Space',keyframe:'KeyK',cut:'KeyC',select:'KeyV',split:'KeyS'}, exporting: false, exportCancelled: false, exportDownloadId: null, exportStartTime: 0, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
   contextSegmentId: null, fonts: ['Arial','Verdana','Tahoma','Trebuchet MS','Georgia','Times New Roman','Courier New','Impact','Segoe UI','Roboto','Inter','Helvetica']
 };
 
@@ -328,8 +328,8 @@ function renderTimeline() {
 }
 function renderPlayhead() {
   const total = totalDuration();
-  const trackWidth = Math.max(0, els.timeline.clientWidth - 70);
-  const x = total ? 70 + (clamp(state.globalTime, 0, total) / total) * trackWidth : 70;
+  const trackWidth = Math.max(0, els.timeline.clientWidth - 96);
+  const x = total ? 96 + (clamp(state.globalTime,0,total)/total)*trackWidth : 96;
   els.playhead.style.left = `${x}px`;
   els.time.textContent = fmt(state.globalTime);
 }
@@ -581,7 +581,10 @@ function syncPlaybackPosition(){
 async function playSequence(){
   if(state.exporting||!state.project.segments.length)return;
   if(state.playing||state.playRequestPending){pauseSequence();return;}
-  clearCameraDraft();
+  if(state.cameraDraft){
+    if(state.project.commitCameraOnPlay!==false)commitCameraKeyframe({silent:true});
+    else{clearCameraDraft();draw();}
+  }
   if(state.globalTime>=totalDuration()-.01)state.globalTime=0;
   const request=++state.playToken;
   state.playRequestPending=true;els.play.textContent='...';
@@ -982,7 +985,7 @@ function stageCameraTransform(next){
   els.zoom.value=transform.zoom;els.zoomValue.textContent=Math.round(transform.zoom*100)+'%';
   draw();
 }
-function commitCameraKeyframe(){
+function commitCameraKeyframe(options={}){
   if(state.exporting)return;
   if(state.playing)pauseSequence();
   const loc=globalToLocation();if(!loc)return toast('Add a clip before keyframing.',true);
@@ -995,7 +998,8 @@ function commitCameraKeyframe(){
   upsertKeyframe(loc.segment,time,transform);
   if(els.cameraDraftStatus)els.cameraDraftStatus.textContent='Keyframe saved at '+fmt(sourceToGlobal(loc.segment,time));
   syncInspector();draw();
-  toast('Camera keyframe saved: '+fmt(sourceToGlobal(loc.segment,time)));
+  captureCameraKeyframePoster(loc.segment,state.selectedCameraKeyframeId);
+  if(!options.silent)toast('Camera keyframe saved: '+fmt(sourceToGlobal(loc.segment,time)));
 }
 
 function normalizeTransform(value, fallback){
@@ -1046,7 +1050,7 @@ function sanitizeSegment(segment){
     videoFadeIn:Math.max(0,Number(segment.videoFadeIn)||0),videoFadeOut:Math.max(0,Number(segment.videoFadeOut)||0),
     audioFadeIn:Math.max(0,Number(segment.audioFadeIn)||0),audioFadeOut:Math.max(0,Number(segment.audioFadeOut)||0),
     baseTransform:normalizeTransform(segment.baseTransform||((segment.motion&&segment.motion[0])||{x:.5,y:.5,zoom:1})),
-    motion:Array.isArray(segment.motion)?segment.motion.map(k=>({time:Number(k.time)||0,...normalizeTransform(k)})).sort((a,b)=>a.time-b.time):[],
+    motion:Array.isArray(segment.motion)?segment.motion.map(k=>({id:k.id||uuid(),time:Number(k.time)||0,...normalizeTransform(k),poster:typeof k.poster==='string'&&k.poster.length<26000?k.poster:null})).sort((a,b)=>a.time-b.time):[],
     texts:[],captions:Array.isArray(segment.captions)?segment.captions:defaultCaptionsForClip(clip)
   };
   out.texts=(Array.isArray(segment.texts)?segment.texts:[]).map(item=>normalizeOverlay(item,out));
@@ -1056,13 +1060,13 @@ async function loadProject(){
   const stored=(await chrome.storage.local.get([PROJECT_KEY,'studio:sequence']))||{};
   if(stored[PROJECT_KEY]&&stored[PROJECT_KEY].segments){
     const raw=stored[PROJECT_KEY];
-    state.project={aspect:'16:9',fill:'crop',motionMode:raw.motionMode||(raw.autoKeyframe===false?'static':'animate'),captionsEnabled:false,captionSize:1,...raw};
+    state.project={aspect:'16:9',fill:'crop',motionMode:raw.motionMode||(raw.autoKeyframe===false?'static':'animate'),captionsEnabled:false,captionSize:1,commitCameraOnPlay:true,...raw};
     state.project.motionMode=state.project.motionMode==='static'?'static':'animate';
     state.project.segments=state.project.segments.filter(s=>clipById(s.clipId)).map(sanitizeSegment);
     return;
   }
   const old=stored['studio:sequence'];
-  state.project={aspect:'16:9',fill:'crop',motionMode:'animate',captionsEnabled:false,captionSize:1,segments:[]};
+  state.project={aspect:'16:9',fill:'crop',motionMode:'animate',commitCameraOnPlay:true,captionsEnabled:false,captionSize:1,segments:[]};
   if(Array.isArray(old))state.project.segments=old.map(clipById).filter(Boolean).map(makeSegment);
 }
 
@@ -1210,9 +1214,9 @@ function segmentMotionAt(segment,sourceTime){
 }
 function upsertKeyframe(segment,sourceTime,transform){
   sourceTime=clamp(sourceTime,segment.in,segment.out);transform=normalizeTransform(transform,segment.baseTransform);
-  if(!segment.motion.length&&sourceTime>segment.in+.05)segment.motion.push({time:segment.in,...normalizeTransform(segment.baseTransform)});
+  if(!segment.motion.length&&sourceTime>segment.in+.05)segment.motion.push({id:uuid(),time:segment.in,...normalizeTransform(segment.baseTransform)});
   const existing=segment.motion.find(k=>Math.abs(k.time-sourceTime)<.06);
-  if(existing)Object.assign(existing,{time:sourceTime,...transform});else segment.motion.push({time:sourceTime,...transform});
+  if(existing){existing.id||=uuid();Object.assign(existing,{time:sourceTime,...transform});state.lastCreatedKeyframeId=existing.id;}else{const item={id:uuid(),time:sourceTime,...transform};segment.motion.push(item);state.lastCreatedKeyframeId=item.id;}state.selectedCameraKeyframeId=state.lastCreatedKeyframeId;
   segment.motion.sort((a,b)=>a.time-b.time);saveProject();renderKeyframes();renderTimeline();
 }
 function applyStaticViewport(segment,sourceTime,next){
@@ -1227,7 +1231,7 @@ function commitViewport(transform){
   if(state.project.motionMode==='animate'){stageCameraTransform(transform);return;}applyStaticViewport(loc.segment,loc.sourceTime,transform);
   draw();syncInspector();
 }
-function clearMotion(){const segment=selectedSegment(),loc=globalToLocation();if(!segment)return;segment.baseTransform=loc&&loc.segment.id===segment.id?segmentMotionAt(segment,loc.sourceTime):normalizeTransform(segment.baseTransform);segment.motion=[];saveProject();renderKeyframes();renderTimeline();draw();syncInspector()}
+function clearMotion(){const segment=selectedSegment(),loc=globalToLocation();if(!segment)return;state.selectedCameraKeyframeId=null;segment.baseTransform=loc&&loc.segment.id===segment.id?segmentMotionAt(segment,loc.sourceTime):normalizeTransform(segment.baseTransform);segment.motion=[];saveProject();renderKeyframes();renderTimeline();draw();syncInspector()}
 
 function overlayTransformAt(item,sourceTime){
   if(item.__previewTransform)return item.__previewTransform;
@@ -1334,7 +1338,7 @@ function fadeDragMove(event){
 function fadeDragEnd(){document.removeEventListener('pointermove',fadeDragMove);state.fadeDrag=null}
 
 function renderTimeline(){
-  const layout=sequenceLayout(),total=totalDuration();els.videoTrack.innerHTML='';els.textTrack.innerHTML='';els.captionTrack.innerHTML='';if(els.audioFades)els.audioFades.innerHTML='';renderRuler();
+  const layout=sequenceLayout(),total=totalDuration();updateTimelineSize();els.videoTrack.innerHTML='';els.textTrack.innerHTML='';els.captionTrack.innerHTML='';if(els.audioFades)els.audioFades.innerHTML='';renderRuler();
   state.overlayBounds.clear();
   for(const item of layout){
     const segment=item.segment,dur=Math.max(.01,item.duration),left=(item.start/Math.max(.001,total))*100,width=Math.max(.3,(item.duration/Math.max(.001,total))*100);
@@ -1360,7 +1364,7 @@ function renderTimeline(){
     }
     for(const cue of segment.captions||[]){const cs=clamp(cue.start,segment.in,segment.out),ce=clamp(cue.end,segment.in,segment.out);if(ce<=cs)continue;const start=sourceToGlobal(segment,cs),end=sourceToGlobal(segment,ce),cc=document.createElement('span');cc.className='caption-block';cc.style.left=(start/Math.max(.001,total)*100)+'%';cc.style.width=Math.max(.25,(end-start)/Math.max(.001,total)*100)+'%';cc.textContent=cue.text;els.captionTrack.appendChild(cc)}
   }
-  renderPlayhead();drawWaveform();syncInspector();els.duration.textContent=fmt(total);els.viewerShell.classList.toggle('empty',!layout.length);els.emptyState.hidden=!!layout.length;els.stage.hidden=!layout.length;els.projectMeta.textContent=layout.length?layout.length+' segment'+(layout.length===1?'':'s')+' · '+fmt(total)+' · local project':'Local-first browser video editor'
+  renderMotionTrack();renderPlayhead();drawWaveform();syncInspector();els.duration.textContent=fmt(total);els.viewerShell.classList.toggle('empty',!layout.length);els.emptyState.hidden=!!layout.length;els.stage.hidden=!layout.length;els.projectMeta.textContent=layout.length?layout.length+' segment'+(layout.length===1?'':'s')+' · '+fmt(total)+' · local project':'Local-first browser video editor'
 }
 
 function syncInspector(){
@@ -1368,7 +1372,7 @@ function syncInspector(){
   if(segment){els.speed.value=segment.speed;els.speedValue.textContent=segment.speed.toFixed(2)+'×';els.volume.value=segment.volume;els.volumeValue.textContent=Math.round(segment.volume*100)+'%';for(const item of [[els.videoFadeIn,els.videoFadeInValue,'videoFadeIn'],[els.videoFadeOut,els.videoFadeOutValue,'videoFadeOut'],[els.audioFadeIn,els.audioFadeInValue,'audioFadeIn'],[els.audioFadeOut,els.audioFadeOutValue,'audioFadeOut']]){const input=item[0],valueEl=item[1],key=item[2];input.max=Math.max(.1,segmentDuration(segment));input.value=segment[key];valueEl.textContent=segment[key].toFixed(1)+'s'}}
   els.aspect.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.aspect===state.project.aspect));els.fill.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.fill===state.project.fill));
   if(els.motionMode)els.motionMode.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.mode===state.project.motionMode));if(els.autoKeyframe)els.autoKeyframe.checked=state.project.motionMode==='animate';if(els.autoHint)els.autoHint.textContent=state.project.motionMode==='animate'?'Manual keyframe · K':'Static viewport edit';
-  if(els.motionModeHelp)els.motionModeHelp.textContent=state.project.motionMode==='animate'?'Animate: drag or zoom at different times to create viewport keyframes.':'Static: drag or zoom changes the whole clip while preserving any existing animation offsets.';
+  if(els.motionModeHelp)els.motionModeHelp.textContent=state.project.motionMode==='animate'?'Animate: try a camera position freely, then K or Space to keep it. Drag thumbnails on M1 to retime.':'Static: moving/zooming changes the whole clip.';if(els.cameraAutocommit)els.cameraAutocommit.checked=state.project.commitCameraOnPlay!==false;
   const motion=loc&&segment&&loc.segment.id===segment.id?segmentMotionAt(segment,loc.sourceTime):normalizeTransform(segment&&segment.baseTransform);els.zoom.value=motion.zoom;els.zoomValue.textContent=Math.round(motion.zoom*100)+'%';renderKeyframes();syncTextInspector();
   els.captionsEnabled.checked=state.project.captionsEnabled;els.captionSize.value=state.project.captionSize;els.captionSizeValue.textContent=Math.round(state.project.captionSize*100)+'%';const caps=segment&&segment.captions||[];els.captionCount.textContent=String(caps.length);els.captionSource.textContent=caps.length?(clipById(segment.clipId)&&clipById(segment.clipId).meta&&clipById(segment.clipId).meta.captionLanguage||'Source / imported'):'No captions'
 }
@@ -1505,6 +1509,9 @@ async function refreshLibrary(selectNewest=false){const oldIds=new Set(state.cli
 async function init(){
   const savedShortcuts=await chrome.storage.local.get('clippah:shortcuts');
   state.shortcutKeys={...state.shortcutKeys,...(savedShortcuts['clippah:shortcuts']||{})};
+  const layoutSettings=await chrome.storage.local.get('clippah:timeline-pps');
+  state.timelinePixelsPerSecond=clamp(Number(layoutSettings['clippah:timeline-pps'])||32,14,120);
+  if(els.timelineZoom){els.timelineZoom.value=String(state.timelinePixelsPerSecond);els.timelineZoomLabel.textContent=state.timelinePixelsPerSecond+'px/s';}
   state.clips=(await getAll('clips')).sort((a,b)=>b.createdAt-a.createdAt);state.folders=(await getAll('folders')).sort((a,b)=>a.name.localeCompare(b.name));await loadProject();state.selectedSegmentId=state.project.segments[0]?.id||null;populateFonts();renderAll();els.stage.className=`stage ratio-${state.project.aspect.replace(':','-')}`;if(state.project.segments.length)await seekGlobal(0,true);else renderTimeline();
 }
 init();
