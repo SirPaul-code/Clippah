@@ -38,6 +38,16 @@
     </section>
 
     <section class="card">
+      <span class="eyebrow">LICENSING</span>
+      <h2>Clippah Free / Pro</h2>
+      <p>Free export includes an embedded watermark. An active Pro license removes it from both the Studio preview and exported video. The license is verified with the Clippah server, not a local toggle.</p>
+      <p id="license-status" class="license-status" aria-live="polite">Free — watermark enabled</p>
+      <div class="field"><label for="license-key">Pro license key</label><input id="license-key" type="password" placeholder="Paste your Clippah license key" autocomplete="off" spellcheck="false"></div>
+      <div class="status-row"><button id="license-activate" type="button">Activate Pro</button><button id="license-deactivate" class="secondary-button" type="button">Deactivate</button><span class="spacer"></span><button id="license-refresh" class="secondary-button" type="button">Verify again</button></div>
+      <p class="note">Licensing can be activated after the HTTPS server is deployed. Until then, this installation runs in Free mode. All source recordings and edits stay local.</p>
+    </section>
+
+    <section class="card">
       <span class="eyebrow">ONE-TIME FOLDER ACCESS</span>
       <h2>In-app updates</h2>
       <p>Install future versions here without downloading another ZIP. First link the <strong>exact folder</strong> selected in Chrome's Load unpacked dialog. The folder must contain Clippah's <code>manifest.json</code>. Your clips and local project storage stay in the same extension.</p>
@@ -62,6 +72,7 @@
       <p class="note">The bridge listens only on <code>127.0.0.1</code>. Video remains local unless you explicitly ask an external agent to inspect returned frame images.</p>
     </section>
   </main>
+  <script src="license.js"></script>
   <script src="options.js"></script>
   <script src="updater.js"></script>
 </body>

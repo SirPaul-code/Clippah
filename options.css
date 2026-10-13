@@ -20,3 +20,6 @@
 .update-message{margin-top:16px}
 #update-status{font-size:13px}
 .update-details{overflow-wrap:anywhere}
+
+.license-status{margin-top:14px!important;padding:10px 12px;background:#251923;border:1px solid #61414e;border-radius:10px;color:#f6c6cd!important;font-weight:800!important}
+.license-status.pro{background:#152a23;border-color:#2d7552;color:#a2efc9!important}

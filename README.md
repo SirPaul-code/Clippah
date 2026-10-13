@@ -1,4 +1,4 @@
-# Clippah 0.5.3
+# Clippah 0.6.0
 
 **Clip where you watch. Finish in a lightweight local editor.**
 
@@ -6,7 +6,7 @@ Clippah is a Chromium extension + local Studio for clipping browser video, assem
 
 ## Install
 
-1. Download the GitHub Actions artifact **Clippah-v0.5.3** (not the `-full` artifact). Extract the downloaded ZIP into a permanent writable folder such as `Documents\\Clippah`. Its files include `manifest.json` directly: no additional ZIP extraction or source repository is needed.
+1. Download the GitHub Actions artifact **Clippah-v0.6.0** (not the `-full` artifact). Extract the downloaded ZIP into a permanent writable folder such as `Documents\\Clippah`. Its files include `manifest.json` directly: no additional ZIP extraction or source repository is needed.
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Click **Load unpacked**.
@@ -26,6 +26,22 @@ No npm/build step is required for the browser extension itself.
 
 The in-app updater downloads files individually (not a potentially flagged full source ZIP), does not download executables or scripts and rolls back files if the update fails. Close Studio before installing updates. Only the extension's source files are modified; extension storage and captured clips stay in Chrome. If the folder was moved, choose its new location again.
 
+
+## Filmstrip timeline and keyframing
+
+- Timeline is resizable with its own zoom slider and Fit; ruler supports click-and-drag scrubbing.
+- Press Space to pause. Move the camera, scroll to zoom under the cursor and adjust it freely.
+- When you press Space again, your pending change is committed as **one** keyframe and playback resumes. Press K if you want to commit manually instead. Settings let you remap the shortcut.
+- Use the **M1 Camera** track to select, drag in time, and inspect each keyframe visually. The inspector also offers exact time and zoom controls.
+- Recorded source clips remain locally stored in Chrome. Preview/editing thumbnails are small WebP strings attached to camera keyframes in the local project.
+
+## Recording overlay ON/OFF
+
+Clippah no longer overlays every video automatically. Click the Clippah toolbar icon for the current tab: **ON** shows Record/Studio on that tab; click again for **OFF**, which hides it. The rest of your tabs remain unaffected.
+
+## Licensing
+
+Free mode exports with an embedded Clippah watermark. Pro mode is prepared with server-verified keys, but cannot be activated until a private HTTPS license server and its database have been deployed and configured. See `license-server/README.md`. This is not tamper-proof DRM because browser extension JavaScript is user-editable.
 
 ## Important YouTube step — one click per tab
 

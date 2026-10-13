@@ -25,6 +25,12 @@ jobs:
           node --check editor.js
           node --check options.js
           node --check updater.js
+          node --check camera-timeline.js
+          node --check license.js
+          node --check license-server/core.mjs
+          node --check license-server/server.mjs
+          node --test tests/camera-timeline.test.cjs
+          node --test license-server/tests/licensing.test.mjs
           node --test tests/updater.test.cjs
           node -e "const fs=require('fs');const r=require('./runtime-files.json');if(r.schema!==1)throw Error('Invalid runtime schema');for(const p of r.files){if(!fs.existsSync(p))throw Error('Missing runtime file: '+p)}if(!r.files.includes('updater.js'))throw Error('Updater missing from install bundle')"
           node --check mcp/server.js

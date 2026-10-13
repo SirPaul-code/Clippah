@@ -2,21 +2,24 @@
   "schema": 1,
   "files": [
     "manifest.json",
-    "runtime-files.json",
     "background.js",
+    "camera-timeline.js",
     "content.js",
-    "offscreen.html",
-    "offscreen.js",
-    "editor.html",
     "editor.css",
+    "editor.html",
     "editor.js",
-    "options.html",
-    "options.css",
-    "options.js",
-    "updater.js",
+    "icons/icon-128.png",
     "icons/icon-16.png",
     "icons/icon-32.png",
     "icons/icon-48.png",
-    "icons/icon-128.png"
+    "license-config.json",
+    "license.js",
+    "offscreen.html",
+    "offscreen.js",
+    "options.css",
+    "options.html",
+    "options.js",
+    "runtime-files.json",
+    "updater.js"
   ]
 }

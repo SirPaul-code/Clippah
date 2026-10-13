@@ -11,6 +11,8 @@
     url: location.href,
     segments: [],
     compatibilityReady: false,
+    panelEnabled: false,
+    placementRunning: false,
     recording: false,
     captureMode: null,
     inTime: null,
@@ -81,6 +83,7 @@
   }
 
   function ensureUi() {
+    if (!state.panelEnabled) return;
     if (state.root?.isConnected) return;
 
     const host = document.createElement('div');
@@ -143,6 +146,7 @@
   }
 
   function toast(message, error = false, timeout = 3200) {
+    if (!state.panelEnabled) return;
     ensureUi();
     clearTimeout(state.toastTimer);
     const el = state.els.toast;
@@ -538,7 +542,17 @@
     };
   }
 
+  function startPlacement(){
+    if(state.placementRunning||!state.panelEnabled)return;
+    state.placementRunning=true;
+    requestAnimationFrame(placeUi);
+  }
   function placeUi() {
+    if (!state.panelEnabled) {
+      if(state.root)state.root.style.display='none';
+      state.placementRunning=false;
+      return;
+    }
     ensureUi();
     const nextVideo = chooseVideo();
     if (nextVideo !== state.video) {
@@ -577,6 +591,7 @@
   }
 
   document.addEventListener('keydown', event => {
+    if (!state.panelEnabled) return;
     if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.target;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
@@ -599,19 +614,24 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === 'CLIPPAH_CAPTURE_STATE') {
-      state.compatibilityReady = !!message.ready;
-      if (state.compatibilityReady) hideNotice();
-      updateUi();
-      if (!state.compatibilityReady && hostPrefersTabCapture()) {
-        chrome.runtime.sendMessage({ type: 'CAPTURE_NEEDED' }).catch(() => {});
-        showCaptureSetup();
+      state.compatibilityReady=!!message.ready;
+      state.panelEnabled=!!message.ready;
+      if (!state.panelEnabled) {
+        if(state.root)state.root.style.display='none';
+        if(state.recording)cancelClip().catch(console.warn);
+        state.video=null;
+        return;
       }
-      toast(state.compatibilityReady ? 'Ready — Clippah is ON for this tab. You can make as many clips as you want.' : 'Capture access ended for this tab.');
+      ensureUi();
+      hideNotice();
+      updateUi();
+      startPlacement();
       return;
     }
 
     if (message?.type === 'CLIPPAH_ERROR') {
-      toast(message.message || 'Clippah error', true, 5000);
+      console.warn('Clippah capture was not enabled:',message.message||'Unknown error');
+      if(state.panelEnabled)toast(message.message || 'Clippah error', true, 5000);
       return;
     }
 
@@ -658,15 +678,10 @@
   });
 
   (async () => {
-    ensureUi();
-    await loadMarkers();
-    const captureState = await chrome.runtime.sendMessage({ type: 'GET_CAPTURE_STATE' })
-      .catch(() => ({ ready: false }));
-    state.compatibilityReady = !!captureState?.ready;
-    if (!state.compatibilityReady && hostPrefersTabCapture()) {
-      chrome.runtime.sendMessage({ type: 'CAPTURE_NEEDED' }).catch(() => {});
-      showCaptureSetup();
-    }
-    requestAnimationFrame(placeUi);
+    const captureState=await chrome.runtime.sendMessage({type:'GET_CAPTURE_STATE'})
+      .catch(()=>({ready:false}));
+    state.compatibilityReady=!!captureState?.ready;
+    state.panelEnabled=state.compatibilityReady;
+    if(state.panelEnabled){ensureUi();await loadMarkers();startPlacement();}
   })();
 })();
