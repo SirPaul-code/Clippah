@@ -53,7 +53,7 @@
       <div id="stage" class="stage ratio-16-9" hidden>
         <canvas id="preview"></canvas>
         <div id="viewer-guides" class="viewer-guides"></div>
-        <div class="canvas-help"><span>Drag = reframe</span><span>Wheel = zoom</span><span id="auto-hint">Auto keyframe on</span></div>
+        <div class="canvas-help"><span>Drag = reframe</span><span>Wheel = zoom</span><span id="auto-hint">Manual keyframe · K</span></div>
       </div>
     </div>
 
@@ -61,7 +61,7 @@
       <div class="transport-bar">
         <button id="play" class="play">▶</button>
         <span id="time" class="timecode">0:00.000</span>
-        <button id="split-at-playhead" class="transport-action" data-tip="Split selected segment at playhead">Split</button>
+        <button id="camera-keyframe" class="transport-action" title="Commit the camera position to a keyframe (K)">◆ K Keyframe</button><span id="camera-draft-status" class="camera-draft-status">K = save keyframe</span><button id="split-at-playhead" class="transport-action" data-tip="Split selected segment at playhead">Split</button>
         <button id="delete-segment" class="transport-action danger" data-tip="Delete selected timeline segment">Delete</button>
         <div class="transport-spacer"></div>
         <span id="duration" class="timecode muted">0:00.000</span>
@@ -87,7 +87,7 @@
         </div>
         <div id="playhead" class="playhead"><i></i></div>
       </div>
-      <div class="timeline-footer"><span>Drag clips to reorder · Right-click a segment for actions · <kbd>Space</kbd> play/pause · <kbd>C</kbd> cut · <kbd>Delete</kbd> remove</span></div>
+      <div class="timeline-footer"><span>Drag clips to reorder · <kbd>Space</kbd> play/pause · <kbd>K</kbd> save camera keyframe · <kbd>C</kbd> cut · Shortcuts remappable in Settings</span></div>
     </section>
   </section>
 
@@ -138,7 +138,7 @@
           <button data-mode="static">Static</button>
           <button data-mode="animate" class="active">Animate</button>
         </div>
-        <p id="motion-mode-help" class="help-copy">Animate: drag or zoom at different times to create viewport keyframes.</p>
+        <p id="motion-mode-help" class="help-copy">Animate: position / zoom the camera, press K to save, Space to continue playing. Unsaved camera previews are discarded when playback resumes.</p>
         <input id="auto-keyframe" type="checkbox" checked hidden>
       </section>
       <section class="control-section"><div class="keyframe-head"><label>Viewport keyframes</label><span id="keyframe-count" class="pill">0</span></div><div id="keyframe-list" class="keyframe-list"></div><div class="action-grid"><button id="add-keyframe">Add at playhead</button><button id="remove-keyframe">Remove nearest</button></div><button id="clear-keyframes" class="wide danger-ghost">Clear all motion</button></section>
@@ -224,6 +224,31 @@
     </div>
   </aside>
 </main>
+
+
+<div id="export-dialog" class="export-dialog-backdrop" hidden>
+  <section class="export-dialog-card" role="dialog" aria-modal="true" aria-labelledby="export-title">
+    <div class="export-dialog-heading">
+      <div id="export-spinner" class="export-spinner" aria-hidden="true"></div>
+      <div class="export-heading-copy">
+        <strong id="export-title">Exporting video</strong>
+        <span id="export-phase" aria-live="polite">Preparing</span>
+      </div>
+    </div>
+    <div class="export-measure">
+      <strong id="export-percent">0%</strong>
+      <span id="export-position">0:00 / 0:00</span>
+    </div>
+    <div id="export-progress-track" class="export-progress-track" role="progressbar" aria-label="Video export progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="export-progress-bar" class="export-progress-bar"></div>
+    </div>
+    <p id="export-eta" class="export-eta">Preparing export...</p>
+    <div class="export-file-row"><span>OUTPUT</span><strong id="export-file">WebM video</strong></div>
+    <div class="export-file-row"><span>SIZE</span><strong id="export-bytes">Recorded: 0 KB</strong></div>
+    <p id="export-detail" class="export-detail" aria-live="polite">Keep this Studio tab visible until export completes.</p>
+    <div class="export-dialog-actions"><button id="export-close" class="ghost" type="button">Cancel export</button></div>
+  </section>
+</div>
 
 <div id="picker" class="modal-backdrop" hidden>
   <div class="picker-card" role="dialog" aria-modal="true" aria-labelledby="picker-title">

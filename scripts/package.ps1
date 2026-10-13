@@ -4,23 +4,7 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Manifest = Get-Content (Join-Path $Root "manifest.json") -Raw | ConvertFrom-Json
 $Version = $Manifest.version
 
-$RuntimeFiles = @(
-    "manifest.json",
-    "background.js",
-    "content.js",
-    "offscreen.html",
-    "offscreen.js",
-    "editor.html",
-    "editor.css",
-    "editor.js",
-    "options.html",
-    "options.css",
-    "options.js",
-    "icons/icon-16.png",
-    "icons/icon-32.png",
-    "icons/icon-48.png",
-    "icons/icon-128.png"
-)
+$RuntimeFiles = @((Get-Content (Join-Path $Root 'runtime-files.json') -Raw | ConvertFrom-Json).files)
 
 foreach ($File in $RuntimeFiles) {
     if (-not (Test-Path (Join-Path $Root $File))) { throw "Missing runtime file: $File" }

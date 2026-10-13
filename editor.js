@@ -5,7 +5,7 @@ const DB_VERSION = 3;
 const PROJECT_KEY = 'studio:project:v4';
 
 const els = {
-  projectTitle: $('#project-title'), projectMeta: $('#project-meta'), export: $('#export'), exportStatus: $('#export-status'), settings: $('#settings'),
+  projectTitle: $('#project-title'), projectMeta: $('#project-meta'), export: $('#export'), exportStatus: $('#export-status'), exportDialog: $('#export-dialog'), exportTitle: $('#export-title'), exportSpinner: $('#export-spinner'), exportPhase: $('#export-phase'), exportPercent: $('#export-percent'), exportPosition: $('#export-position'), exportEta: $('#export-eta'), exportProgressTrack: $('#export-progress-track'), exportProgressBar: $('#export-progress-bar'), exportFile: $('#export-file'), exportBytes: $('#export-bytes'), exportDetail: $('#export-detail'), exportClose: $('#export-close'), settings: $('#settings'),
   refresh: $('#refresh'), folderFilter: $('#folder-filter'), organize: $('#organize'), bulkBar: $('#bulk-bar'), bulkCount: $('#bulk-count'), moveFolder: $('#move-folder'), newFolder: $('#new-folder'), bulkDone: $('#bulk-done'), clipList: $('#clip-list'),
   toolSelect: $('#tool-select'), toolCut: $('#tool-cut'), addText: $('#add-text'), viewerShell: $('#viewer-shell'), emptyState: $('#empty-state'), stage: $('#stage'), preview: $('#preview'), viewerGuides: $('#viewer-guides'), autoHint: $('#auto-hint'),
   play: $('#play'), time: $('#time'), duration: $('#duration'), splitAtPlayhead: $('#split-at-playhead'), deleteSegment: $('#delete-segment'), timeline: $('#timeline'), ruler: $('#ruler'), videoTrack: $('#video-track'), waveform: $('#waveform'), audioFades: $('#audio-fades'), textTrack: $('#text-track'), captionTrack: $('#caption-track'), playhead: $('#playhead'),
@@ -22,7 +22,7 @@ const state = {
   selectedSegmentId: null, selectedTextId: null, tool: 'select', globalTime: 0, playing: false, playRaf: 0,
   sourceUrl: null, loadedSegmentId: null, sourceReady: false, draggingCanvas: false, dragStart: null, transformStart: null, textDrag: false,
   waveformCache: new Map(), waveformPending: new Set(), saveTimer: 0, toastTimer: 0, pendingInsertIndex: null, dragInsertIndex: null,
-  exporting: false, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
+  playToken: 0, playRequestPending: false, seekRequest: 0, cameraDraft: null, shortcutKeys: {play:'Space',keyframe:'KeyK',cut:'KeyC',select:'KeyV',split:'KeyS'}, exporting: false, exportCancelled: false, exportDownloadId: null, exportStartTime: 0, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
   contextSegmentId: null, fonts: ['Arial','Verdana','Tahoma','Trebuchet MS','Georgia','Times New Roman','Courier New','Impact','Segoe UI','Roboto','Inter','Helvetica']
 };
 
@@ -492,7 +492,7 @@ function drawFrame(ctx,w,h,location=globalToLocation(),opts={}){
     const target=w/h;let sw=src.sw,sh=src.sh;if(src.sw/src.sh>target)sw=src.sh*target;else sh=src.sw/target;sw/=motion.zoom;sh/=motion.zoom;const sx=src.sx+clamp(motion.x,0,1)*(src.sw-sw),sy=src.sy+clamp(motion.y,0,1)*(src.sh-sh);ctx.drawImage(els.source,sx,sy,sw,sh,0,0,w,h);
   }
   ctx.restore();
-  for(const text of segment.texts||[])drawText(ctx,text,w,h,sourceTime,text.id===state.selectedTextId&&opts.guides!==false);
+  for(const text of segment.texts||[])drawText(ctx,text,w,h,sourceTime,opts.guides!==false&&text.id===state.selectedTextId);
   drawCaption(ctx,activeCaption(segment,sourceTime),w,h);
 }
 function resizePreview(){if(els.stage.hidden)return;const r=els.stage.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);els.preview.width=Math.max(2,Math.round(r.width*dpr));els.preview.height=Math.max(2,Math.round(r.height*dpr));draw();}
@@ -507,30 +507,135 @@ function updateAudioLevel(location=globalToLocation()){
 }
 
 function unloadSource(){if(state.sourceUrl)URL.revokeObjectURL(state.sourceUrl);state.sourceUrl=null;state.loadedSegmentId=null;state.sourceReady=false;els.source.pause();els.source.removeAttribute('src');els.source.load();}
-async function loadLocation(location, forceSeek=true){
-  if(!location)return;
-  if(state.loadedSegmentId!==location.segment.id){
-    if(state.sourceUrl)URL.revokeObjectURL(state.sourceUrl);state.sourceUrl=URL.createObjectURL(location.clip.blob);state.loadedSegmentId=location.segment.id;state.sourceReady=false;els.source.pause();els.source.src=state.sourceUrl;els.source.load();await new Promise(resolve=>{if(els.source.readyState>=1)return resolve();const done=()=>resolve();els.source.addEventListener('loadedmetadata',done,{once:true});setTimeout(done,900)});state.sourceReady=true;
-  }
-  els.source.playbackRate=location.segment.speed;
-  if(forceSeek||Math.abs(els.source.currentTime-location.sourceTime)>.12){try{els.source.currentTime=location.sourceTime}catch(_){}}
-  updateAudioLevel(location);draw();
+async function waitForSourceMetadata(video,timeoutMs=8000){
+  if(video.readyState>=1)return;
+  await new Promise((resolve,reject)=>{
+    let timeout;
+    const cleanup=()=>{clearTimeout(timeout);video.removeEventListener('loadedmetadata',onReady);video.removeEventListener('error',onError)};
+    const onReady=()=>{cleanup();resolve()};
+    const onError=()=>{cleanup();reject(new Error('Source video could not be loaded.'))};
+    video.addEventListener('loadedmetadata',onReady);
+    video.addEventListener('error',onError);
+    timeout=setTimeout(()=>{cleanup();reject(new Error('Loading source video timed out.'))},timeoutMs);
+  });
 }
-async function seekGlobal(time, pause=true){
-  const total=totalDuration();state.globalTime=clamp(Number(time)||0,0,total);if(pause)pauseSequence(false);const loc=globalToLocation();if(loc){state.selectedSegmentId=loc.segment.id;await loadLocation(loc,true);}renderPlayhead();renderTimeline();draw();
+async function seekSourceFrame(video,time,timeoutMs=6000){
+  const target=Math.max(0,Number(time)||0);
+  if(!video.seeking&&Math.abs(video.currentTime-target)<.022&&video.readyState>=2)return;
+  await new Promise((resolve,reject)=>{
+    let timeout;
+    const cleanup=()=>{clearTimeout(timeout);video.removeEventListener('seeked',onReady);video.removeEventListener('loadeddata',onReady);video.removeEventListener('error',onError)};
+    const onReady=()=>{if(video.seeking||Math.abs(video.currentTime-target)>.035)return;cleanup();resolve()};
+    const onError=()=>{cleanup();reject(new Error('Video failed while seeking.'))};
+    video.addEventListener('seeked',onReady);
+    video.addEventListener('loadeddata',onReady);
+    video.addEventListener('error',onError);
+    timeout=setTimeout(()=>{cleanup();reject(new Error('Seeking source frame timed out.'))},timeoutMs);
+    try{
+      video.currentTime=target;
+      if(!video.seeking&&video.readyState>=2&&Math.abs(video.currentTime-target)<.035)onReady();
+    }catch(error){cleanup();reject(error);}
+  });
+}
+async function loadLocation(location,forceSeek=true){
+  if(!location||!location.clip?.blob)throw new Error('A clip on the timeline is missing its recorded video.');
+  const segmentId=location.segment.id;
+  if(state.loadedSegmentId!==segmentId){
+    if(state.sourceUrl)URL.revokeObjectURL(state.sourceUrl);
+    state.sourceUrl=URL.createObjectURL(location.clip.blob);
+    state.loadedSegmentId=segmentId;state.sourceReady=false;
+    els.source.pause();els.source.src=state.sourceUrl;els.source.load();
+    await waitForSourceMetadata(els.source);
+    if(state.loadedSegmentId!==segmentId)return;
+    state.sourceReady=true;
+  }
+  if(state.loadedSegmentId!==segmentId)return;
+  els.source.playbackRate=location.segment.speed;
+  if(forceSeek||Math.abs(els.source.currentTime-location.sourceTime)>.12){
+    await seekSourceFrame(els.source,location.sourceTime);
+    if(state.loadedSegmentId!==segmentId)return;
+  }
+  updateAudioLevel(location);
+  if(!state.exporting)draw();
+}
+async function seekGlobal(time,pause=true){
+  if(pause)pauseSequence(false);
+  const request=++state.seekRequest;
+  const total=totalDuration();
+  state.globalTime=clamp(Number(time)||0,0,total);
+  clearCameraDraft();
+  const loc=globalToLocation();
+  if(loc){
+    state.selectedSegmentId=loc.segment.id;
+    try{await loadLocation(loc,true);}catch(error){if(request===state.seekRequest)toast(error?.message||'Seek failed.',true,5000);}
+  }
+  if(request!==state.seekRequest)return;
+  renderPlayhead();renderTimeline();draw();
+}
+function syncPlaybackPosition(){
+  const item=sequenceLayout().find(x=>x.segment.id===state.loadedSegmentId);
+  if(!item||!Number.isFinite(els.source.currentTime))return state.globalTime;
+  state.globalTime=clamp(item.start+(els.source.currentTime-item.segment.in)/Math.max(.05,item.segment.speed),item.start,item.end);
+  return state.globalTime;
 }
 async function playSequence(){
-  if(!state.project.segments.length)return;if(state.playing)return pauseSequence();if(state.globalTime>=totalDuration()-.01)state.globalTime=0;state.playing=true;els.play.textContent='❚❚';const loc=globalToLocation();await loadLocation(loc,true);await ensureAudioGraph().catch(()=>{});try{await state.audioContext?.resume()}catch(_){};try{await els.source.play()}catch(error){state.playing=false;toast(error?.message||'Could not start playback.',true);return}state.playRaf=requestAnimationFrame(playLoop);
+  if(state.exporting||!state.project.segments.length)return;
+  if(state.playing||state.playRequestPending){pauseSequence();return;}
+  clearCameraDraft();
+  if(state.globalTime>=totalDuration()-.01)state.globalTime=0;
+  const request=++state.playToken;
+  state.playRequestPending=true;els.play.textContent='...';
+  try{
+    const loc=globalToLocation();
+    if(!loc)throw new Error('No clip on the timeline.');
+    await loadLocation(loc,true);
+    if(request!==state.playToken)return;
+    await ensureAudioGraph();
+    if(state.audioContext)await state.audioContext.resume();
+    if(request!==state.playToken)return;
+    await els.source.play();
+    if(request!==state.playToken){els.source.pause();return;}
+    state.playing=true;els.play.textContent='❚❚';
+    state.playRaf=requestAnimationFrame(playLoop);
+  }catch(error){
+    if(request===state.playToken){els.source.pause();els.play.textContent='▶';toast(error?.message||'Could not start playback.',true);}
+  }finally{
+    if(request===state.playToken)state.playRequestPending=false;
+  }
 }
 async function playLoop(){
-  if(!state.playing)return;const loc=globalToLocation();if(!loc){pauseSequence();return}
-  const same=loc.segment.id===state.loadedSegmentId;
-  if(same){const current=els.source.currentTime;state.globalTime=clamp(loc.start+(current-loc.segment.in)/loc.segment.speed,loc.start,loc.end);updateAudioLevel({...loc,sourceTime:current,localOutput:(current-loc.segment.in)/loc.segment.speed});draw();renderPlayhead();if(current>=loc.segment.out-.025||els.source.ended){const next=sequenceLayout()[loc.index+1];if(!next){state.globalTime=totalDuration();pauseSequence(false);renderPlayhead();return}state.globalTime=next.start;await loadLocation({...next,globalTime:next.start,localOutput:0,sourceTime:next.segment.in},true);try{await els.source.play()}catch(_){}}
-  }else await loadLocation(globalToLocation(),true);
-  state.playRaf=requestAnimationFrame(playLoop);
+  if(!state.playing)return;
+  const request=state.playToken;
+  const item=sequenceLayout().find(x=>x.segment.id===state.loadedSegmentId);
+  if(!item){pauseSequence();return;}
+  const sourceTime=els.source.currentTime;
+  if(!Number.isFinite(sourceTime)){pauseSequence();toast('Video playback lost its timeline position.',true);return;}
+  syncPlaybackPosition();
+  updateAudioLevel({...item,sourceTime,localOutput:clamp((sourceTime-item.segment.in)/item.segment.speed,0,item.duration)});
+  draw();renderPlayhead();
+  if(sourceTime>=item.segment.out-.025||els.source.ended){
+    const next=sequenceLayout()[item.index+1];
+    if(!next){state.globalTime=totalDuration();pauseSequence(false);renderPlayhead();return;}
+    state.globalTime=next.start;
+    try{
+      await loadLocation({...next,globalTime:next.start,localOutput:0,sourceTime:next.segment.in},true);
+      if(request!==state.playToken||!state.playing)return;
+      await els.source.play();
+      if(request!==state.playToken||!state.playing){els.source.pause();return;}
+    }catch(error){
+      if(request===state.playToken){pauseSequence();toast('Playback stopped: '+(error?.message||'Video source error'),true);}
+      return;
+    }
+  }
+  if(request===state.playToken&&state.playing)state.playRaf=requestAnimationFrame(playLoop);
 }
-function pauseSequence(update=true){state.playing=false;cancelAnimationFrame(state.playRaf);els.source.pause();els.play.textContent='▶';if(update)renderPlayhead();}
-
+function pauseSequence(update=true){
+  if(state.playing)syncPlaybackPosition();
+  state.playToken++;state.playRequestPending=false;state.playing=false;
+  cancelAnimationFrame(state.playRaf);
+  els.source.pause();els.play.textContent='▶';
+  if(update){renderPlayhead();syncInspector();draw();}
+}
 function currentTransform(){const loc=globalToLocation();return loc?segmentMotionAt(loc.segment,loc.sourceTime):{x:.5,y:.5,zoom:1};}
 function commitViewport(transform){const loc=globalToLocation();if(!loc)return;const segment=loc.segment;if(state.project.autoKeyframe)upsertKeyframe(segment,loc.sourceTime,transform);else{segment.motion=[{time:segment.in,...transform}];saveProject();renderKeyframes();renderTimeline()}draw();}
 
@@ -567,12 +672,249 @@ function drawWaveform(){
 function renderAll(){renderFolders();renderLibrary();updateBulkBar();renderTimeline();syncInspector();populateFonts();}
 
 function aspectDims(){return state.project.aspect==='9:16'?[1080,1920]:state.project.aspect==='1:1'?[1080,1080]:[1920,1080];}
-async function exportSequence(){
-  if(state.exporting||!state.project.segments.length)return;state.exporting=true;els.export.disabled=true;els.exportStatus.textContent='Rendering locally…';pauseSequence(false);await ensureAudioGraph();await state.audioContext.resume();const [w,h]=aspectDims(),canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d',{alpha:false}),canvasStream=canvas.captureStream(30);state.exportGain.gain.value=0;const out=new MediaStream([...canvasStream.getVideoTracks(),...state.exportDest.stream.getAudioTracks()]);const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t))||'';const recorder=new MediaRecorder(out,mime?{mimeType:mime,videoBitsPerSecond:12000000}:undefined),chunks=[];recorder.ondataavailable=e=>e.data?.size&&chunks.push(e.data);recorder.start(1000);
+function exportName(){
+  return 'clippah-'+state.project.aspect.replace(':','x')+'-'+new Date().toISOString().replace(/\D/g,'').slice(0,14)+'.webm';
+}
+function exportCheckCancel(){
+  if(state.exportCancelled)throw new DOMException('Export cancelled','AbortError');
+}
+function exportWithTimeout(promise,ms,label){
+  let timer;
+  return Promise.race([promise,new Promise((_,reject)=>{
+    timer=setTimeout(()=>reject(new Error(label+' timed out. Keep Studio visible and try again.')),ms);
+  })]).finally(()=>clearTimeout(timer));
+}
+function showExportProgress(phase,percentage,rendered,total,detail){
+  const pct=clamp(Math.round(percentage),0,100);
+  els.exportProgressBar.style.width=pct+'%';
+  els.exportProgressTrack.setAttribute('aria-valuenow',String(pct));
+  els.exportPercent.textContent=pct+'%';
+  els.exportPhase.textContent=phase;
+  els.exportPosition.textContent=fmt(rendered)+' / '+fmt(total);
+  if(detail)els.exportDetail.textContent=detail;
+  if(phase==='Rendering video'&&rendered>.3&&state.exportStartTime){
+    const elapsed=(performance.now()-state.exportStartTime)/1000;
+    els.exportEta.textContent='Estimated remaining: '+fmt(Math.max(0,(total-rendered)/(rendered/Math.max(.1,elapsed))));
+  }else els.exportEta.textContent=phase==='Rendering video'?'Estimating remaining time...':phase;
+}
+function finishExportUi(title,detail,isError){
+  els.exportTitle.textContent=title;
+  els.exportDetail.textContent=detail;
+  els.exportSpinner.hidden=true;
+  els.exportClose.textContent='Close';
+  els.exportClose.disabled=false;
+  els.exportDialog.classList.toggle('export-error',Boolean(isError));
+}
+async function downloadWithSaveAs(blob,filename){
+  const url=URL.createObjectURL(blob);
+  if(!chrome.downloads?.download){
+    const link=document.createElement('a');
+    link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),120000);
+    return false;
+  }
   try{
-    const layout=sequenceLayout();for(const item of layout){await loadLocation({...item,globalTime:item.start,localOutput:0,sourceTime:item.segment.in},true);els.source.playbackRate=item.segment.speed;await els.source.play();await new Promise((resolve,reject)=>{const step=()=>{if(!state.exporting)return reject(new Error('Export cancelled'));const sourceTime=els.source.currentTime,localOutput=(sourceTime-item.segment.in)/item.segment.speed;state.exportGain.gain.value=audioLevel(item.segment,localOutput);drawFrame(ctx,w,h,{...item,globalTime:item.start+localOutput,localOutput,sourceTime},{guides:false});if(sourceTime>=item.segment.out-.02||els.source.ended){els.source.pause();state.exportGain.gain.value=0;return resolve()}requestAnimationFrame(step)};requestAnimationFrame(step)});}
-    const stopped=new Promise(resolve=>recorder.addEventListener('stop',resolve,{once:true}));recorder.stop();await stopped;const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`clippah-${state.project.aspect.replace(':','x')}-${Date.now()}.webm`;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);els.exportStatus.textContent=`Exported ${bytes(blob.size)}`;
-  }catch(error){try{recorder.stop()}catch(_){}els.exportStatus.textContent='Export failed';toast(error?.message||'Export failed.',true,5000)}finally{canvasStream.getTracks().forEach(t=>t.stop());state.exportGain.gain.value=0;state.exporting=false;els.export.disabled=false;await seekGlobal(state.globalTime,true)}
+    const id=await chrome.downloads.download({url,filename,saveAs:true,conflictAction:'uniquify'});
+    if(!Number.isInteger(id))throw new Error('Chrome did not create a download.');
+    state.exportDownloadId=id;
+    await new Promise((resolve,reject)=>{
+      let done=false;
+      const complete=error=>{
+        if(done)return;
+        done=true;chrome.downloads.onChanged.removeListener(changed);
+        if(error)reject(error);else resolve();
+      };
+      const check=item=>{
+        if(item?.state==='complete')complete();
+        if(item?.state==='interrupted')complete(
+          item.error==='USER_CANCELED'||state.exportCancelled?
+            new DOMException('Save As cancelled','AbortError'):
+            new Error('Download interrupted: '+(item.error||'unknown error')));
+      };
+      const changed=delta=>{
+        if(delta.id===id&&delta.state)check({state:delta.state.current,error:delta.error?.current});
+      };
+      chrome.downloads.onChanged.addListener(changed);
+      chrome.downloads.search({id}).then(items=>check(items?.[0])).catch(complete);
+    });
+    return true;
+  }finally{
+    state.exportDownloadId=null;
+    URL.revokeObjectURL(url);
+  }
+}
+async function exportSequence(){
+  if(state.exporting)return;
+  clearCameraDraft();
+  if(!state.project.segments.length){toast('Add a clip to the timeline first.',true);return;}
+  state.exporting=true;state.exportCancelled=false;state.exportDownloadId=null;state.exportStartTime=0;
+  els.export.disabled=true;
+  els.exportDialog.hidden=false;els.exportDialog.classList.remove('export-error');
+  els.exportTitle.textContent='Exporting video';els.exportSpinner.hidden=false;
+  els.exportClose.textContent='Cancel export';els.exportClose.disabled=false;
+  const duration=totalDuration(),restoreTime=state.globalTime,filename=exportName();
+  const [width,height]=aspectDims();
+  els.exportFile.textContent=filename+' · '+width+' × '+height+' · WebM';
+  els.exportBytes.textContent='Recorded: 0 KB';
+  els.exportStatus.textContent='Preparing export...';
+  showExportProgress('Preparing',0,0,duration,'Select the save location. Export runs in real time, so keep Studio in the foreground.');
+
+  // Audio resume and the native save dialog both require the initial click gesture.
+  let audioReady;
+  try{
+    const graph=ensureAudioGraph();
+    const resumed=state.audioContext?.resume();
+    audioReady=Promise.all([graph,resumed]).then(()=>null,error=>error);
+  }catch(error){audioReady=Promise.resolve(error);}
+  let picker=null,pickerError=null;
+  if(typeof window.showSaveFilePicker==='function'&&navigator.userActivation?.isActive!==false){
+    try{
+      picker=window.showSaveFilePicker({
+        suggestedName:filename,
+        types:[{description:'WebM video',accept:{'video/webm':['.webm']}}],
+        excludeAcceptAllOption:true
+      });
+    }catch(error){pickerError=error;}
+  }
+
+  let handle=null,writer=null,canvasStream=null,recorder=null,writeQueue=Promise.resolve(),writeError=null;
+  let chunks=[],written=0,saved=false;
+  try{
+    if(picker){
+      try{handle=await picker;}
+      catch(error){
+        if(error?.name==='AbortError')throw error;
+        pickerError=error;
+      }
+    }
+    exportCheckCancel();
+    if(handle)els.exportFile.textContent=handle.name+' · '+width+' × '+height+' · WebM';
+    if(!handle)showExportProgress('Preparing',0,0,duration,
+      'Choose a destination in the Chrome Save As dialog after rendering.'+(pickerError?' Native picker unavailable.':''));
+    const audioError=await exportWithTimeout(audioReady,12000,'Audio initialization');
+    if(audioError)throw audioError;
+    exportCheckCancel();
+    if(!state.exportDest?.stream)throw new Error('Audio output is unavailable.');
+    if(typeof MediaRecorder==='undefined')throw new Error('MediaRecorder is not supported by this browser.');
+    if(handle)writer=await handle.createWritable();
+    exportCheckCancel();
+    pauseSequence(false);
+    const layout=sequenceLayout(),first=layout[0];
+    if(!first)throw new Error('Timeline is empty.');
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+    const ctx=canvas.getContext('2d',{alpha:false});
+    if(!ctx)throw new Error('Unable to create export canvas.');
+    await exportWithTimeout(loadLocation({...first,globalTime:0,localOutput:0,sourceTime:first.segment.in},true),12000,'Loading video');
+    exportCheckCancel();
+    state.previewGain.gain.value=0;
+    drawFrame(ctx,width,height,{...first,globalTime:0,localOutput:0,sourceTime:first.segment.in},{guides:false});
+    canvasStream=canvas.captureStream(30);
+    const stream=new MediaStream([...canvasStream.getVideoTracks(),...state.exportDest.stream.getAudioTracks()]);
+    const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+      .find(type=>MediaRecorder.isTypeSupported(type))||'';
+    recorder=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:12000000}:undefined);
+    let recordingError=null;
+    recorder.addEventListener('error',event=>{recordingError=event.error||new Error('Video encoder failed.');});
+    recorder.addEventListener('dataavailable',event=>{
+      if(!event.data?.size)return;
+      written+=event.data.size;
+      if(writer){
+        writeQueue=writeQueue.then(()=>{if(writeError)throw writeError;return writer.write(event.data);})
+          .catch(error=>{writeError=error;});
+      }else chunks.push(event.data);
+    });
+    recorder.start(1000);
+    state.exportStartTime=performance.now();
+    let lastPaint=0;
+    for(const item of layout){
+      exportCheckCancel();
+      if(item!==first)await exportWithTimeout(
+        loadLocation({...item,globalTime:item.start,localOutput:0,sourceTime:item.segment.in},true),
+        12000,'Loading next clip');
+      exportCheckCancel();
+      state.previewGain.gain.value=0;
+      els.source.playbackRate=item.segment.speed;
+      await exportWithTimeout(els.source.play(),15000,'Video playback');
+      exportCheckCancel();
+      await new Promise((resolve,reject)=>{
+        let previousTime=els.source.currentTime,lastMotion=performance.now();
+        function step(){
+          try{
+            exportCheckCancel();
+            if(recordingError)throw recordingError;
+            if(writeError)throw writeError;
+            if(recorder.state!=='recording')throw new Error('Video encoder stopped unexpectedly.');
+            const now=performance.now(),sourceTime=els.source.currentTime;
+            if(sourceTime>previousTime+.005){previousTime=sourceTime;lastMotion=now;}
+            if(now-lastMotion>15000)throw new Error('Video stopped progressing. Keep Studio visible and check the source recording.');
+            const position=clamp((sourceTime-item.segment.in)/item.segment.speed,0,item.duration);
+            const rendered=clamp(item.start+position,0,duration);
+            state.exportGain.gain.value=audioLevel(item.segment,position);
+            drawFrame(ctx,width,height,{...item,globalTime:rendered,localOutput:position,sourceTime},{guides:false});
+            if(now-lastPaint>200||sourceTime>=item.segment.out-.02||els.source.ended){
+              lastPaint=now;
+              showExportProgress('Rendering video',rendered/Math.max(.001,duration)*95,rendered,duration,
+                'Rendering at playback speed. Keep the Studio tab in the foreground.');
+              els.exportBytes.textContent='Recorded: '+bytes(written);
+              els.exportStatus.textContent='Rendering '+Math.round(rendered/Math.max(.001,duration)*100)+'%';
+            }
+            if(sourceTime>=item.segment.out-.02||els.source.ended){
+              els.source.pause();state.exportGain.gain.value=0;resolve();return;
+            }
+            requestAnimationFrame(step);
+          }catch(error){reject(error);}
+        }
+        requestAnimationFrame(step);
+      });
+    }
+    exportCheckCancel();
+    showExportProgress('Finalizing WebM',96,duration,duration,'Finishing the video recording...');
+    els.exportStatus.textContent='Finalizing video...';
+    await exportWithTimeout(new Promise((resolve,reject)=>{
+      recorder.addEventListener('stop',resolve,{once:true});
+      recorder.addEventListener('error',event=>reject(event.error||new Error('Recorder error')),{once:true});
+      recorder.stop();
+    }),60000,'Finalizing WebM');
+    await writeQueue;
+    if(writeError)throw writeError;
+    exportCheckCancel();
+    showExportProgress('Saving file',99,duration,duration,'Writing video to the selected location...');
+    els.exportStatus.textContent='Saving video...';
+    if(writer){
+      await writer.close();saved=true;
+    }else{
+      const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});
+      if(!blob.size)throw new Error('The rendered video is empty.');
+      chunks=[];
+      showExportProgress('Waiting for Save As',99,duration,duration,'Choose the destination in the Chrome Save As dialog.');
+      saved=await downloadWithSaveAs(blob,filename);
+    }
+    exportCheckCancel();
+    showExportProgress('Complete',100,duration,duration,'Export finished.');
+    els.exportStatus.textContent='Exported '+bytes(written);
+    finishExportUi(saved?'Export complete':'Download started',
+      (saved?'Saved: ':'Download requested: ')+(handle?.name||filename)+' · '+bytes(written),false);
+    toast('Video export finished.');
+  }catch(error){
+    const cancelled=error?.name==='AbortError'||state.exportCancelled;
+    els.exportStatus.textContent=cancelled?'Export cancelled':'Export failed';
+    finishExportUi(cancelled?'Export cancelled':'Export failed',
+      cancelled?'No new video was saved.':(error?.message||'Unknown error.'),!cancelled);
+    if(!cancelled)toast('Export failed: '+(error?.message||'Unknown error'),true,6000);
+    console.error('Clippah export:',error);
+  }finally{
+    try{
+      if(recorder?.state==='recording')await exportWithTimeout(
+        new Promise(resolve=>{recorder.addEventListener('stop',resolve,{once:true});recorder.stop();}),
+        5000,'Stopping recorder');
+    }catch(error){console.warn('Clippah recorder cleanup:',error);}
+    if(writer&&!saved)try{await writeQueue;await writer.abort();}catch(error){console.warn('Partial export cleanup:',error);}
+    if(canvasStream)canvasStream.getTracks().forEach(track=>track.stop());
+    if(state.exportGain)state.exportGain.gain.value=0;
+    state.exporting=false;state.exportCancelled=false;state.exportDownloadId=null;
+    els.export.disabled=false;
+    try{await seekGlobal(restoreTime,true);}catch(error){console.warn('Could not restore the preview:',error);}
+  }
 }
 
 function frameDataUrl(){return els.preview.toDataURL('image/png');}
@@ -604,7 +946,7 @@ async function handleAgent(command,params={}){
 
 /* CLIPPAH_V05_OVERRIDE */
 Object.assign(els,{
-  librarySearch:$('#library-search'),libraryNewFolder:$('#library-new-folder'),libraryContextMenu:$('#library-context-menu'),
+  cameraDraftStatus:$('#camera-draft-status'),librarySearch:$('#library-search'),libraryNewFolder:$('#library-new-folder'),libraryContextMenu:$('#library-context-menu'),
   addEmoji:$('#add-emoji'),addImage:$('#add-image'),newEmoji:$('#new-emoji'),newImage:$('#new-image'),
   motionMode:$('#motion-mode'),motionModeHelp:$('#motion-mode-help'),
   overlayKind:$('#overlay-kind'),emojiQuick:$('#emoji-quick'),textFontSection:$('#text-font-section'),imageSection:$('#image-section'),
@@ -618,6 +960,43 @@ Object.assign(state,{
   overlayImages:new Map(),overlayBounds:new Map(),overlayDrag:false,overlayDragStart:null,overlayTransformStart:null,
   fadeDrag:null
 });
+
+
+function clearCameraDraft(){
+  if(state.cameraDraft?.segmentId){
+    const segment=segmentById(state.cameraDraft.segmentId);
+    if(segment)delete segment.__previewTransform;
+  }
+  state.cameraDraft=null;
+  if(els.cameraDraftStatus)els.cameraDraftStatus.textContent='K = save keyframe';
+}
+function stageCameraTransform(next){
+  if(state.playing)pauseSequence();
+  const loc=globalToLocation();if(!loc)return;
+  const transform=normalizeTransform(next);
+  if(state.project.motionMode!=='animate'){commitViewport(transform);return;}
+  if(state.cameraDraft?.segmentId!==loc.segment.id||Math.abs(state.cameraDraft.time-loc.sourceTime)>.05)clearCameraDraft();
+  state.cameraDraft={segmentId:loc.segment.id,time:loc.sourceTime,transform};
+  loc.segment.__previewTransform=transform;
+  if(els.cameraDraftStatus)els.cameraDraftStatus.textContent='Uncommitted camera position · '+fmt(loc.globalTime)+' · press K';
+  els.zoom.value=transform.zoom;els.zoomValue.textContent=Math.round(transform.zoom*100)+'%';
+  draw();
+}
+function commitCameraKeyframe(){
+  if(state.exporting)return;
+  if(state.playing)pauseSequence();
+  const loc=globalToLocation();if(!loc)return toast('Add a clip before keyframing.',true);
+  if(state.project.motionMode!=='animate')return toast('Enable Animate mode in Motion first.',true);
+  const draft=state.cameraDraft?.segmentId===loc.segment.id?state.cameraDraft:null;
+  const time=draft?draft.time:loc.sourceTime;
+  const transform=draft?draft.transform:segmentMotionAt(loc.segment,time);
+  delete loc.segment.__previewTransform;
+  state.cameraDraft=null;
+  upsertKeyframe(loc.segment,time,transform);
+  if(els.cameraDraftStatus)els.cameraDraftStatus.textContent='Keyframe saved at '+fmt(sourceToGlobal(loc.segment,time));
+  syncInspector();draw();
+  toast('Camera keyframe saved: '+fmt(sourceToGlobal(loc.segment,time)));
+}
 
 function normalizeTransform(value, fallback){
   fallback=fallback||{x:.5,y:.5,zoom:1};
@@ -845,7 +1224,7 @@ function applyStaticViewport(segment,sourceTime,next){
 }
 function commitViewport(transform){
   const loc=globalToLocation();if(!loc)return;delete loc.segment.__previewTransform;
-  if(state.project.motionMode==='animate')upsertKeyframe(loc.segment,loc.sourceTime,transform);else applyStaticViewport(loc.segment,loc.sourceTime,transform);
+  if(state.project.motionMode==='animate'){stageCameraTransform(transform);return;}applyStaticViewport(loc.segment,loc.sourceTime,transform);
   draw();syncInspector();
 }
 function clearMotion(){const segment=selectedSegment(),loc=globalToLocation();if(!segment)return;segment.baseTransform=loc&&loc.segment.id===segment.id?segmentMotionAt(segment,loc.sourceTime):normalizeTransform(segment.baseTransform);segment.motion=[];saveProject();renderKeyframes();renderTimeline();draw();syncInspector()}
@@ -988,7 +1367,7 @@ function syncInspector(){
   const segment=selectedSegment(),loc=globalToLocation();els.noSegment.hidden=!!segment;els.clipControls.hidden=!segment;els.clipIndex.textContent=segment?(state.project.segments.findIndex(s=>s.id===segment.id)+1)+'/'+state.project.segments.length:'—';
   if(segment){els.speed.value=segment.speed;els.speedValue.textContent=segment.speed.toFixed(2)+'×';els.volume.value=segment.volume;els.volumeValue.textContent=Math.round(segment.volume*100)+'%';for(const item of [[els.videoFadeIn,els.videoFadeInValue,'videoFadeIn'],[els.videoFadeOut,els.videoFadeOutValue,'videoFadeOut'],[els.audioFadeIn,els.audioFadeInValue,'audioFadeIn'],[els.audioFadeOut,els.audioFadeOutValue,'audioFadeOut']]){const input=item[0],valueEl=item[1],key=item[2];input.max=Math.max(.1,segmentDuration(segment));input.value=segment[key];valueEl.textContent=segment[key].toFixed(1)+'s'}}
   els.aspect.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.aspect===state.project.aspect));els.fill.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.fill===state.project.fill));
-  if(els.motionMode)els.motionMode.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.mode===state.project.motionMode));if(els.autoKeyframe)els.autoKeyframe.checked=state.project.motionMode==='animate';if(els.autoHint)els.autoHint.textContent=state.project.motionMode==='animate'?'Viewport animation on':'Static viewport edit';
+  if(els.motionMode)els.motionMode.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.mode===state.project.motionMode));if(els.autoKeyframe)els.autoKeyframe.checked=state.project.motionMode==='animate';if(els.autoHint)els.autoHint.textContent=state.project.motionMode==='animate'?'Manual keyframe · K':'Static viewport edit';
   if(els.motionModeHelp)els.motionModeHelp.textContent=state.project.motionMode==='animate'?'Animate: drag or zoom at different times to create viewport keyframes.':'Static: drag or zoom changes the whole clip while preserving any existing animation offsets.';
   const motion=loc&&segment&&loc.segment.id===segment.id?segmentMotionAt(segment,loc.sourceTime):normalizeTransform(segment&&segment.baseTransform);els.zoom.value=motion.zoom;els.zoomValue.textContent=Math.round(motion.zoom*100)+'%';renderKeyframes();syncTextInspector();
   els.captionsEnabled.checked=state.project.captionsEnabled;els.captionSize.value=state.project.captionSize;els.captionSizeValue.textContent=Math.round(state.project.captionSize*100)+'%';const caps=segment&&segment.captions||[];els.captionCount.textContent=String(caps.length);els.captionSource.textContent=caps.length?(clipById(segment.clipId)&&clipById(segment.clipId).meta&&clipById(segment.clipId).meta.captionLanguage||'Source / imported'):'No captions'
@@ -1032,7 +1411,7 @@ async function handleAgent(command,params){
 // v0.5 controls
 if(els.librarySearch)els.librarySearch.addEventListener('input',()=>{state.librarySearchText=els.librarySearch.value;renderLibrary()});
 if(els.libraryNewFolder)els.libraryNewFolder.addEventListener('click',async()=>{const name=prompt('New folder name');if(name)await createLibraryFolder(name,state.activeFolderId)});
-if(els.motionMode)els.motionMode.addEventListener('click',event=>{const mode=event.target.closest('button')&&event.target.closest('button').dataset.mode;if(!mode)return;state.project.motionMode=mode==='static'?'static':'animate';state.project.autoKeyframe=state.project.motionMode==='animate';saveProject();syncInspector()});
+if(els.motionMode)els.motionMode.addEventListener('click',event=>{const mode=event.target.closest('button')&&event.target.closest('button').dataset.mode;if(!mode)return;state.project.motionMode=mode==='static'?'static':'animate';state.project.autoKeyframe=state.project.motionMode==='animate';clearCameraDraft();saveProject();syncInspector()});
 if(els.addEmoji)els.addEmoji.addEventListener('click',addEmojiLayer);if(els.newEmoji)els.newEmoji.addEventListener('click',addEmojiLayer);if(els.addImage)els.addImage.addEventListener('click',addImageLayer);if(els.newImage)els.newImage.addEventListener('click',addImageLayer);
 if(els.changeImage)els.changeImage.addEventListener('click',()=>{els.overlayImageFile.dataset.create='0';els.overlayImageFile.value='';els.overlayImageFile.click()});
 if(els.overlayImageFile)els.overlayImageFile.addEventListener('change',()=>overlayFileChosen(els.overlayImageFile.files&&els.overlayImageFile.files[0],els.overlayImageFile.dataset.create!=='1'));
@@ -1050,6 +1429,7 @@ document.addEventListener('pointerdown',event=>{if(els.libraryContextMenu&&!even
 // Capture-phase canvas interaction replaces v0.4 handlers without removing backward-compatible code.
 els.preview.addEventListener('pointerdown',event=>{
   const loc=globalToLocation();if(!loc)return;
+  if(state.playing)pauseSequence();
   const hit=overlayHit(event.clientX,event.clientY);
   if(hit){state.selectedSegmentId=loc.segment.id;state.selectedTextId=hit;setTool('text');switchPanel('text');syncInspector();renderTimeline()}
   const item=selectedText();
@@ -1072,19 +1452,19 @@ els.preview.addEventListener('pointermove',event=>{
 function v05CanvasEnd(event){
   const loc=globalToLocation();
   if(state.overlayDrag){event.preventDefault();event.stopImmediatePropagation();state.overlayDrag=false;const item=selectedText();if(item&&item.__previewTransform&&loc){const t={...item.__previewTransform};delete item.__previewTransform;commitOverlayTransform(item,loc.sourceTime,t)}try{els.preview.releasePointerCapture(event.pointerId)}catch(_){}return}
-  if(state.draggingCanvas){event.preventDefault();event.stopImmediatePropagation();state.draggingCanvas=false;els.preview.classList.remove('dragging');if(loc&&loc.segment.__previewTransform){const t={...loc.segment.__previewTransform};delete loc.segment.__previewTransform;commitViewport(t)}try{els.preview.releasePointerCapture(event.pointerId)}catch(_){}}
+  if(state.draggingCanvas){event.preventDefault();event.stopImmediatePropagation();state.draggingCanvas=false;els.preview.classList.remove('dragging');if(loc&&loc.segment.__previewTransform){const t={...loc.segment.__previewTransform};delete loc.segment.__previewTransform;stageCameraTransform(t)}try{els.preview.releasePointerCapture(event.pointerId)}catch(_){}}
 }
 els.preview.addEventListener('pointerup',v05CanvasEnd,{capture:true});els.preview.addEventListener('pointercancel',v05CanvasEnd,{capture:true});
 els.preview.addEventListener('wheel',event=>{
   const loc=globalToLocation();if(!loc)return;
   if(state.tool==='text'&&selectedText()){event.preventDefault();event.stopImmediatePropagation();const item=selectedText(),t=overlayTransformAt(item,loc.sourceTime);t.scale=clamp(t.scale*(event.deltaY<0?1.06:.94),.1,8);commitOverlayTransform(item,loc.sourceTime,t);return}
-  if(state.tool==='select'){event.preventDefault();event.stopImmediatePropagation();const t=segmentMotionAt(loc.segment,loc.sourceTime);t.zoom=clamp(t.zoom*(event.deltaY<0?1.06:.94),1,3);commitViewport(t)}
+  if(state.tool==='select'){event.preventDefault();event.stopImmediatePropagation();const t=segmentMotionAt(loc.segment,loc.sourceTime);t.zoom=clamp(t.zoom*(event.deltaY<0?1.06:.94),1,3);stageCameraTransform(t)}
 },{capture:true,passive:false});
 
 
 // UI bindings
 els.inspectorTabs.forEach(button=>button.addEventListener('click',()=>switchPanel(button.dataset.panel)));
-els.toolSelect.addEventListener('click',()=>setTool('select'));els.toolCut.addEventListener('click',()=>setTool('cut'));els.addText.addEventListener('click',addTextLayer);els.newText.addEventListener('click',addTextLayer);els.play.addEventListener('click',playSequence);els.splitAtPlayhead.addEventListener('click',()=>splitSegment());els.deleteSegment.addEventListener('click',()=>state.selectedSegmentId&&removeSegment(state.selectedSegmentId));els.clipSplit.addEventListener('click',()=>splitSegment());els.clipRemove.addEventListener('click',()=>state.selectedSegmentId&&removeSegment(state.selectedSegmentId));els.export.addEventListener('click',exportSequence);els.settings.addEventListener('click',()=>chrome.runtime.openOptionsPage());els.refresh.addEventListener('click',()=>refreshLibrary(true));
+els.toolSelect.addEventListener('click',()=>setTool('select'));els.toolCut.addEventListener('click',()=>setTool('cut'));els.addText.addEventListener('click',addTextLayer);els.newText.addEventListener('click',addTextLayer);els.play.addEventListener('click',playSequence);$('#camera-keyframe').addEventListener('click',commitCameraKeyframe);els.splitAtPlayhead.addEventListener('click',()=>splitSegment());els.deleteSegment.addEventListener('click',()=>state.selectedSegmentId&&removeSegment(state.selectedSegmentId));els.clipSplit.addEventListener('click',()=>splitSegment());els.clipRemove.addEventListener('click',()=>state.selectedSegmentId&&removeSegment(state.selectedSegmentId));els.export.addEventListener('click',exportSequence);els.exportClose.addEventListener('click',()=>{if(!state.exporting){els.exportDialog.hidden=true;return;}state.exportCancelled=true;els.exportPhase.textContent='Cancelling...';els.exportClose.disabled=true;if(state.exportDownloadId!==null&&chrome.downloads?.cancel)chrome.downloads.cancel(state.exportDownloadId).catch(()=>{});});els.settings.addEventListener('click',()=>chrome.runtime.openOptionsPage());els.refresh.addEventListener('click',()=>refreshLibrary(true));
 
 els.videoTrack.addEventListener('dragover',event=>{event.preventDefault();event.dataTransfer.dropEffect=event.dataTransfer.types.includes('application/x-clippah-segment')?'move':'copy';state.dragInsertIndex=timelineDropIndex(event.clientX);els.videoTrack.classList.add('drag-over');showInsertMarker(state.dragInsertIndex)});els.videoTrack.addEventListener('dragleave',event=>{if(!els.videoTrack.contains(event.relatedTarget)){els.videoTrack.classList.remove('drag-over');els.videoTrack.querySelector('.insert-marker')?.remove()}});els.videoTrack.addEventListener('drop',event=>{event.preventDefault();els.videoTrack.classList.remove('drag-over');els.videoTrack.querySelector('.insert-marker')?.remove();const index=timelineDropIndex(event.clientX),segmentId=event.dataTransfer.getData('application/x-clippah-segment'),clipId=event.dataTransfer.getData('application/x-clippah-clip')||event.dataTransfer.getData('text/plain');if(segmentId)reorderSegment(segmentId,index);else if(clipById(clipId))insertClip(clipId,index)});
 
@@ -1095,7 +1475,7 @@ els.contextMenu.addEventListener('click',event=>{const action=event.target.datas
 els.organize.addEventListener('click',()=>{state.organizing=!state.organizing;state.selectedLibrary.clear();updateBulkBar();renderLibrary()});els.bulkDone.addEventListener('click',()=>{state.organizing=false;state.selectedLibrary.clear();updateBulkBar();renderLibrary()});els.folderFilter.addEventListener('change',()=>{state.folderFilter=els.folderFilter.value;renderLibrary()});els.moveFolder.addEventListener('change',async()=>{if(!state.selectedLibrary.size||!els.moveFolder.value)return;await moveClipsToFolder([...state.selectedLibrary],els.moveFolder.value==='none'?null:els.moveFolder.value);state.selectedLibrary.clear();els.moveFolder.value='';await refreshLibrary(false);toast('Clips moved.');});els.newFolder.addEventListener('click',async()=>{const name=prompt('New folder name');if(!name?.trim())return;const folder={id:uuid(),name:name.trim(),createdAt:Date.now()};await putRecord('folders',folder);if(state.selectedLibrary.size)await moveClipsToFolder([...state.selectedLibrary],folder.id);state.selectedLibrary.clear();await refreshLibrary(false);toast(`Folder “${folder.name}” created.`)});
 
 for(const [input,key,valueEl,max] of [[els.speed,'speed',els.speedValue,3],[els.volume,'volume',els.volumeValue,2],[els.videoFadeIn,'videoFadeIn',els.videoFadeInValue,99],[els.videoFadeOut,'videoFadeOut',els.videoFadeOutValue,99],[els.audioFadeIn,'audioFadeIn',els.audioFadeInValue,99],[els.audioFadeOut,'audioFadeOut',els.audioFadeOutValue,99]])input.addEventListener('input',()=>{const value=Number(input.value);setSegmentNumber(key,value,0,max);if(key==='speed')valueEl.textContent=`${value.toFixed(2)}×`;else if(key==='volume')valueEl.textContent=`${Math.round(value*100)}%`;else valueEl.textContent=`${value.toFixed(1)}s`});
-els.aspect.addEventListener('click',event=>{const aspect=event.target.closest('button')?.dataset.aspect;if(!aspect)return;state.project.aspect=aspect;saveProject();els.stage.className=`stage ratio-${aspect.replace(':','-')}`;syncInspector();requestAnimationFrame(resizePreview)});els.fill.addEventListener('click',event=>{const fill=event.target.closest('button')?.dataset.fill;if(!fill)return;state.project.fill=fill;saveProject();syncInspector();draw()});els.autoKeyframe.addEventListener('change',()=>{state.project.autoKeyframe=els.autoKeyframe.checked;saveProject();syncInspector()});els.zoom.addEventListener('input',()=>{const loc=globalToLocation();if(!loc)return;const current=segmentMotionAt(loc.segment,loc.sourceTime);commitViewport({...current,zoom:Number(els.zoom.value)});els.zoomValue.textContent=`${Math.round(Number(els.zoom.value)*100)}%`});els.addKeyframe.addEventListener('click',()=>{const loc=globalToLocation();if(!loc)return;upsertKeyframe(loc.segment,loc.sourceTime,segmentMotionAt(loc.segment,loc.sourceTime))});els.removeKeyframe.addEventListener('click',removeNearestKeyframe);els.clearKeyframes.addEventListener('click',clearMotion);els.resetFrame.addEventListener('click',()=>{const loc=globalToLocation();if(!loc)return;upsertKeyframe(loc.segment,loc.sourceTime,{x:.5,y:.5,zoom:1});draw()});
+els.aspect.addEventListener('click',event=>{const aspect=event.target.closest('button')?.dataset.aspect;if(!aspect)return;state.project.aspect=aspect;saveProject();els.stage.className=`stage ratio-${aspect.replace(':','-')}`;syncInspector();requestAnimationFrame(resizePreview)});els.fill.addEventListener('click',event=>{const fill=event.target.closest('button')?.dataset.fill;if(!fill)return;state.project.fill=fill;saveProject();syncInspector();draw()});els.autoKeyframe.addEventListener('change',()=>{state.project.autoKeyframe=els.autoKeyframe.checked;saveProject();syncInspector()});els.zoom.addEventListener('input',()=>{const loc=globalToLocation();if(!loc)return;const current=segmentMotionAt(loc.segment,loc.sourceTime);stageCameraTransform({...current,zoom:Number(els.zoom.value)});els.zoomValue.textContent=`${Math.round(Number(els.zoom.value)*100)}%`});els.addKeyframe.addEventListener('click',commitCameraKeyframe);els.removeKeyframe.addEventListener('click',removeNearestKeyframe);els.clearKeyframes.addEventListener('click',clearMotion);els.resetFrame.addEventListener('click',()=>{const loc=globalToLocation();if(!loc)return;upsertKeyframe(loc.segment,loc.sourceTime,{x:.5,y:.5,zoom:1});draw()});
 
 els.textContent.addEventListener('input',()=>updateText({text:els.textContent.value}));els.fontFamily.addEventListener('change',()=>updateText({fontFamily:els.fontFamily.value}));els.fontSize.addEventListener('input',()=>updateText({fontSize:clamp(Number(els.fontSize.value)||64,12,240)}));els.fontColor.addEventListener('input',()=>updateText({color:els.fontColor.value}));els.textStart.addEventListener('change',()=>updateText({start:Number(els.textStart.value)}));els.textEnd.addEventListener('change',()=>updateText({end:Number(els.textEnd.value)}));els.textFadeIn.addEventListener('change',()=>updateText({fadeIn:Math.max(0,Number(els.textFadeIn.value)||0)}));els.textFadeOut.addEventListener('change',()=>updateText({fadeOut:Math.max(0,Number(els.textFadeOut.value)||0)}));els.deleteText.addEventListener('click',deleteTextLayer);els.loadFonts.addEventListener('click',loadSystemFonts);
 
@@ -1103,13 +1483,28 @@ els.captionsEnabled.addEventListener('change',()=>{state.project.captionsEnabled
 
 els.preview.addEventListener('pointerdown',event=>{const loc=globalToLocation();if(!loc)return;if(state.tool==='text'&&selectedText()){state.textDrag=true;els.preview.setPointerCapture(event.pointerId);const r=els.preview.getBoundingClientRect();updateText({x:clamp((event.clientX-r.left)/r.width,0,1),y:clamp((event.clientY-r.top)/r.height,0,1)});return}if(state.tool!=='select')return;state.draggingCanvas=true;els.preview.classList.add('dragging');els.preview.setPointerCapture(event.pointerId);state.dragStart={x:event.clientX,y:event.clientY};state.transformStart={...segmentMotionAt(loc.segment,loc.sourceTime)}});els.preview.addEventListener('pointermove',event=>{if(state.textDrag&&selectedText()){const r=els.preview.getBoundingClientRect();updateText({x:clamp((event.clientX-r.left)/r.width,0,1),y:clamp((event.clientY-r.top)/r.height,0,1)});return}if(!state.draggingCanvas)return;const r=els.preview.getBoundingClientRect(),dx=(event.clientX-state.dragStart.x)/Math.max(1,r.width),dy=(event.clientY-state.dragStart.y)/Math.max(1,r.height);const t={...state.transformStart,x:clamp(state.transformStart.x-dx/Math.max(1,state.transformStart.zoom),0,1),y:clamp(state.transformStart.y-dy/Math.max(1,state.transformStart.zoom),0,1)};state.previewTransform=t;const loc=globalToLocation();if(loc){const original=loc.segment.motion;loc.segment.__previewMotion=t;drawFrame(els.preview.getContext('2d',{alpha:false}),els.preview.width,els.preview.height,{...loc,segment:{...loc.segment,motion:[{time:loc.sourceTime,...t}]}});loc.segment.motion=original}});function endCanvas(event){if(state.textDrag){state.textDrag=false;return}if(!state.draggingCanvas)return;state.draggingCanvas=false;els.preview.classList.remove('dragging');try{els.preview.releasePointerCapture(event.pointerId)}catch(_){}if(state.previewTransform){commitViewport(state.previewTransform);state.previewTransform=null}}els.preview.addEventListener('pointerup',endCanvas);els.preview.addEventListener('pointercancel',endCanvas);els.preview.addEventListener('wheel',event=>{if(state.tool!=='select')return;event.preventDefault();const loc=globalToLocation();if(!loc)return;const t=segmentMotionAt(loc.segment,loc.sourceTime);t.zoom=clamp(t.zoom*(event.deltaY<0?1.06:.94),1,3);commitViewport(t)},{passive:false});
 
-window.addEventListener('resize',()=>{resizePreview();drawWaveform()});document.addEventListener('keydown',event=>{if(event.target&&['INPUT','TEXTAREA','SELECT'].includes(event.target.tagName))return;if(event.code==='Space'){event.preventDefault();playSequence()}else if(event.key==='c'||event.key==='C')setTool('cut');else if(event.key==='v'||event.key==='V')setTool('select');else if(event.key==='t'||event.key==='T')addTextLayer();else if(event.key==='Delete'&&state.selectedTextId)deleteTextLayer();else if(event.key==='Delete'&&state.selectedSegmentId)removeSegment(state.selectedSegmentId);else if(event.key==='Escape'){closePicker();closeContextMenu();setTool('select')}else if(event.key==='s'||event.key==='S')splitSegment()});
+window.addEventListener('resize',()=>{resizePreview();drawWaveform()});document.addEventListener('keydown',event=>{
+  if(state.exportDialog&&!state.exportDialog.hidden)return;
+  if(event.ctrlKey||event.metaKey||event.altKey||event.repeat)return;
+  if(event.target&&['INPUT','TEXTAREA','SELECT'].includes(event.target.tagName))return;
+  const code=event.code;
+  if(code===state.shortcutKeys.play){event.preventDefault();playSequence();return;}
+  if(code===state.shortcutKeys.keyframe){event.preventDefault();commitCameraKeyframe();return;}
+  if(code===state.shortcutKeys.cut){event.preventDefault();setTool('cut');return;}
+  if(code===state.shortcutKeys.select){event.preventDefault();setTool('select');return;}
+  if(code===state.shortcutKeys.split){event.preventDefault();splitSegment();return;}
+  if(code==='Delete'&&state.selectedTextId){deleteTextLayer();return;}
+  if(code==='Delete'&&state.selectedSegmentId){removeSegment(state.selectedSegmentId);return;}
+  if(code==='Escape'){clearCameraDraft();closePicker();closeContextMenu();setTool('select');draw();}
+});
 
 chrome.runtime.onMessage.addListener((message,_sender,sendResponse)=>{if(message?.type==='CLIP_LIBRARY_CHANGED'){refreshLibrary(false).then(()=>toast('New clip added to Library.'));return}if(message?.type==='AGENT_STUDIO_COMMAND'){handleAgent(message.command,message.params||{}).then(sendResponse).catch(error=>sendResponse({ok:false,error:error?.message||String(error)}));return true}});
 
 async function refreshLibrary(selectNewest=false){const oldIds=new Set(state.clips.map(c=>c.id));state.clips=(await getAll('clips')).sort((a,b)=>b.createdAt-a.createdAt);state.folders=(await getAll('folders')).sort((a,b)=>a.name.localeCompare(b.name));state.project.segments=state.project.segments.filter(s=>clipById(s.clipId));if(selectNewest&&state.clips[0]&&!oldIds.has(state.clips[0].id))await insertClip(state.clips[0].id,state.project.segments.length);renderAll();if(state.project.segments.length&&!state.loadedSegmentId)await seekGlobal(clamp(state.globalTime,0,totalDuration()),true)}
 
 async function init(){
+  const savedShortcuts=await chrome.storage.local.get('clippah:shortcuts');
+  state.shortcutKeys={...state.shortcutKeys,...(savedShortcuts['clippah:shortcuts']||{})};
   state.clips=(await getAll('clips')).sort((a,b)=>b.createdAt-a.createdAt);state.folders=(await getAll('folders')).sort((a,b)=>a.name.localeCompare(b.name));await loadProject();state.selectedSegmentId=state.project.segments[0]?.id||null;populateFonts();renderAll();els.stage.className=`stage ratio-${state.project.aspect.replace(':','-')}`;if(state.project.segments.length)await seekGlobal(0,true);else renderTimeline();
 }
 init();

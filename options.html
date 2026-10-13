@@ -24,6 +24,38 @@
       <div class="status-row"><span id="dot" class="dot"></span><span id="status">Disabled</span><span class="spacer"></span><button id="save">Save & reconnect</button></div>
     </section>
 
+    <section class="card">
+      <h2>Studio keyboard shortcuts</h2>
+      <p>Click a shortcut field, then press the key you want. Ctrl, Alt and system shortcuts are reserved.</p>
+      <div class="shortcuts-grid">
+        <label for="shortcut-play">Play / Pause<input id="shortcut-play" class="shortcut-input" data-shortcut="play" readonly value="Space"></label>
+        <label for="shortcut-keyframe">Save camera keyframe<input id="shortcut-keyframe" class="shortcut-input" data-shortcut="keyframe" readonly value="K"></label>
+        <label for="shortcut-cut">Cut tool<input id="shortcut-cut" class="shortcut-input" data-shortcut="cut" readonly value="C"></label>
+        <label for="shortcut-select">Select tool<input id="shortcut-select" class="shortcut-input" data-shortcut="select" readonly value="V"></label>
+        <label for="shortcut-split">Split segment<input id="shortcut-split" class="shortcut-input" data-shortcut="split" readonly value="S"></label>
+      </div>
+      <div class="status-row"><span id="shortcuts-status">Ready</span><span class="spacer"></span><button id="shortcuts-reset" type="button">Reset defaults</button></div>
+    </section>
+
+    <section class="card">
+      <span class="eyebrow">ONE-TIME FOLDER ACCESS</span>
+      <h2>In-app updates</h2>
+      <p>Install future versions here without downloading another ZIP. First link the <strong>exact folder</strong> selected in Chrome's Load unpacked dialog. The folder must contain Clippah's <code>manifest.json</code>. Your clips and local project storage stay in the same extension.</p>
+      <div class="update-actions">
+        <button id="link-update-folder" type="button">Choose extension folder</button>
+        <button id="unlink-update-folder" type="button" class="secondary-button">Unlink folder</button>
+        <span id="update-folder-name">Not linked</span>
+      </div>
+      <div class="update-actions">
+        <button id="check-updates" type="button">Check for updates</button>
+        <button id="install-update" type="button" hidden>Install update</button>
+      </div>
+      <div id="update-progress" class="update-progress" role="progressbar" aria-label="Update progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><div id="update-progress-bar"></div></div>
+      <div class="update-message"><strong id="update-status" aria-live="polite">Not checked yet</strong><p id="update-details" class="update-details"></p></div>
+      <a id="update-link" href="https://github.com/SirPaul-code/Clippah" target="_blank" rel="noopener noreferrer" hidden>View version on GitHub</a>
+      <p class="note">Chrome may ask to renew write access after a restart. No admin rights or separate updater program is needed. Keep Clippah Studio closed while applying an update.</p>
+    </section>
+
     <section class="card compact">
       <h2>What an agent can do</h2>
       <div class="tool-grid"><span>Get exact rendered frame</span><span>Cut / reorder timeline</span><span>Move viewport by pixels</span><span>Speed / fades / audio</span><span>Text & captions</span><span>Export sequence</span></div>
@@ -31,5 +63,6 @@
     </section>
   </main>
   <script src="options.js"></script>
+  <script src="updater.js"></script>
 </body>
 </html>

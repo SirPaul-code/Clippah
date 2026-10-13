@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.3 — 2026-10-13
+
+- One-time manual installation followed by user-initiated in-app updates.
+- Folder link using Chrome File System Access API and IndexedDB-persisted directory handle.
+- Fetch updates from immutable GitHub commit SHA, SHA-1 Git blob integrity check, then staged file writes and rollback on error.
+- Restore previous content if write or verification fails; reload the same extension ID without uninstalling or losing stored clips.
+- Extension-only package is canonical; excludes MCP scripts and other repository scaffolding.
+
+
+## 0.5.2 — 2026-10-13
+
+- Manual K camera keyframes: preview zoom and position first, then commit explicitly.
+- Video time synchronization on pause, awaited seeking, and protection from stale playback requests.
+- Remappable Studio keyboard shortcuts in Settings.
+- Check for updates from GitHub main; safe manual upgrade instructions for unpacked extensions.
+- Continued export progress, save picker, cancel and error handling improvements from 0.5.1.
+
+
 ## 0.5.0 — 2026-10-06
 
 - explicit Static / Animate viewport editing
