@@ -1,0 +1,5 @@
+{
+  "product": "Clippah",
+  "apiBase": "",
+  "note": "Set apiBase only after deploying your own HTTPS license service; never put secrets in extension files."
+}
