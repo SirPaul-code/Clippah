@@ -491,6 +491,31 @@ function drawText(ctx,text,w,h,sourceTime,selected=false){
 }
 function activeCaption(segment,sourceTime){return (segment.captions||[]).find(c=>sourceTime>=c.start&&sourceTime<=c.end&&c.text);}
 function drawCaption(ctx,cue,w,h){if(!cue||!state.project.captionsEnabled)return;ctx.save();const size=Math.round(52*(state.project.captionSize||1)*(w/1920));ctx.font=`800 ${Math.max(18,size)}px Arial`;ctx.textAlign='center';ctx.textBaseline='bottom';const maxWidth=w*.82,words=String(cue.text).split(/\s+/),lines=[];let line='';for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=word}else line=test}if(line)lines.push(line);const lh=size*1.22,y0=h-h*.085-(lines.length-1)*lh;ctx.lineWidth=Math.max(3,size*.09);ctx.strokeStyle='rgba(0,0,0,.88)';ctx.fillStyle='#fff';lines.forEach((text,i)=>{const y=y0+i*lh;ctx.strokeText(text,w/2,y);ctx.fillText(text,w/2,y)});ctx.restore();}
+
+function drawClippahFreeWatermark(ctx,w,h){
+  if(ClippahLicense.has('no_watermark'))return;
+  ctx.save();
+  const unit=Math.max(16,Math.round(w*.03));
+  // This is drawn into both Studio preview and the actual MediaRecorder export canvas.
+  ctx.translate(w*.5,h*.47);ctx.rotate(-Math.PI/9);
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.font='900 '+Math.round(unit*2.6)+'px Arial,sans-serif';
+  ctx.lineWidth=Math.max(2,unit*.17);
+  ctx.strokeStyle='rgba(0,0,0,.32)';
+  ctx.fillStyle='rgba(255,255,255,.15)';
+  ctx.strokeText('CLIPPAH',0,0);ctx.fillText('CLIPPAH',0,0);
+  ctx.restore();
+  ctx.save();
+  const pad=Math.round(w*.022),size=Math.max(15,Math.round(w*.024));
+  const label='CLIPPAH · FREE',x=w-pad,y=h-pad;
+  ctx.font='900 '+size+'px Arial,sans-serif';ctx.textAlign='right';ctx.textBaseline='bottom';
+  const tw=ctx.measureText(label).width;
+  ctx.fillStyle='rgba(11,10,23,.82)';
+  ctx.fillRect(x-tw-pad/2,y-size-pad/2,tw+pad,pad+size);
+  ctx.fillStyle='#ffffff';ctx.fillText(label,x,y);
+  ctx.restore();
+}
+
 function drawFrame(ctx,w,h,location=globalToLocation(),opts={}){
   ctx.clearRect(0,0,w,h);ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);if(!location||!els.source.videoWidth)return;
   const {segment,clip,sourceTime,localOutput}=location,src=sourceRegion(els.source,clip),motion=segmentMotionAt(segment,sourceTime),fill=state.project.fill;
@@ -505,6 +530,7 @@ function drawFrame(ctx,w,h,location=globalToLocation(),opts={}){
   ctx.restore();
   for(const text of segment.texts||[])drawText(ctx,text,w,h,sourceTime,opts.guides!==false&&text.id===state.selectedTextId);
   drawCaption(ctx,activeCaption(segment,sourceTime),w,h);
+  drawClippahFreeWatermark(ctx,w,h);
 }
 function resizePreview(){if(els.stage.hidden)return;const r=els.stage.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);els.preview.width=Math.max(2,Math.round(r.width*dpr));els.preview.height=Math.max(2,Math.round(r.height*dpr));draw();}
 function draw(){if(els.stage.hidden)return;drawFrame(els.preview.getContext('2d',{alpha:false}),els.preview.width,els.preview.height,globalToLocation());}
@@ -805,6 +831,8 @@ async function exportSequence(){
     if(handle)els.exportFile.textContent=handle.name+' · '+width+' × '+height+' · WebM';
     if(!handle)showExportProgress('Preparing',0,0,duration,
       'Choose a destination in the Chrome Save As dialog after rendering.'+(pickerError?' Native picker unavailable.':''));
+    const license=await exportWithTimeout(ClippahLicense.refresh(true),12000,'License verification');
+    if(!license.active)els.exportDetail.textContent='Free mode: Clippah watermark is included in the rendered video.';
     const audioError=await exportWithTimeout(audioReady,12000,'Audio initialization');
     if(audioError)throw audioError;
     exportCheckCancel();
@@ -1786,6 +1814,12 @@ chrome.runtime.onMessage.addListener((message,_sender,sendResponse)=>{if(message
 async function refreshLibrary(selectNewest=false){const oldIds=new Set(state.clips.map(c=>c.id));state.clips=(await getAll('clips')).sort((a,b)=>b.createdAt-a.createdAt);state.folders=(await getAll('folders')).sort((a,b)=>a.name.localeCompare(b.name));state.project.segments=state.project.segments.filter(s=>clipById(s.clipId));if(selectNewest&&state.clips[0]&&!oldIds.has(state.clips[0].id))await insertClip(state.clips[0].id,state.project.segments.length);renderAll();if(state.project.segments.length&&!state.loadedSegmentId)await seekGlobal(clamp(state.globalTime,0,totalDuration()),true)}
 
 async function init(){
+  ClippahLicense.onChange(info=>{
+    const label=$('#license-badge');
+    if(label){label.textContent=info.active&&info.features.includes('no_watermark')?'PRO · no watermark':'FREE · watermark';label.classList.toggle('pro',info.active);}
+    draw();
+  });
+  ClippahLicense.start().then(()=>ClippahLicense.refresh(true)).catch(error=>console.warn('License initialization',error));
   const savedShortcuts=await chrome.storage.local.get('clippah:shortcuts');
   state.shortcutKeys={...state.shortcutKeys,...(savedShortcuts['clippah:shortcuts']||{})};
   const layoutSettings=await chrome.storage.local.get('clippah:timeline-pps');
