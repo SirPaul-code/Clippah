@@ -24,6 +24,27 @@
       <div class="status-row"><span id="dot" class="dot"></span><span id="status">Disabled</span><span class="spacer"></span><button id="save">Save & reconnect</button></div>
     </section>
 
+    <section class="card">
+      <h2>Studio keyboard shortcuts</h2>
+      <p>Click a shortcut field, then press the key you want. Ctrl, Alt and system shortcuts are reserved.</p>
+      <div class="shortcuts-grid">
+        <label for="shortcut-play">Play / Pause<input id="shortcut-play" class="shortcut-input" data-shortcut="play" readonly value="Space"></label>
+        <label for="shortcut-keyframe">Save camera keyframe<input id="shortcut-keyframe" class="shortcut-input" data-shortcut="keyframe" readonly value="K"></label>
+        <label for="shortcut-cut">Cut tool<input id="shortcut-cut" class="shortcut-input" data-shortcut="cut" readonly value="C"></label>
+        <label for="shortcut-select">Select tool<input id="shortcut-select" class="shortcut-input" data-shortcut="select" readonly value="V"></label>
+        <label for="shortcut-split">Split segment<input id="shortcut-split" class="shortcut-input" data-shortcut="split" readonly value="S"></label>
+      </div>
+      <div class="status-row"><span id="shortcuts-status">Ready</span><span class="spacer"></span><button id="shortcuts-reset" type="button">Reset defaults</button></div>
+    </section>
+
+    <section class="card">
+      <h2>Extension updates</h2>
+      <p>Check GitHub for a newer release. Chrome cannot silently replace a Load unpacked extension, so installation still requires replacing the unpacked files and clicking Reload. Do not remove your current extension or local clips.</p>
+      <div class="status-row"><span id="update-status">Not checked yet</span><span class="spacer"></span><button id="check-updates" type="button">Check for updates</button></div>
+      <p id="update-details" class="update-details"></p>
+      <a id="update-link" href="https://github.com/SirPaul-code/Clippah" target="_blank" rel="noopener noreferrer" hidden>Open latest version on GitHub</a>
+    </section>
+
     <section class="card compact">
       <h2>What an agent can do</h2>
       <div class="tool-grid"><span>Get exact rendered frame</span><span>Cut / reorder timeline</span><span>Move viewport by pixels</span><span>Speed / fades / audio</span><span>Text & captions</span><span>Export sequence</span></div>
