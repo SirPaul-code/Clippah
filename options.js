@@ -65,36 +65,3 @@ document.querySelector('#shortcuts-reset').addEventListener('click',async()=>{
   await chrome.storage.local.set({'clippah:shortcuts':shortcutKeys});
   paintShortcuts('Shortcuts reset to defaults.');
 });
-
-const checkUpdates=document.querySelector('#check-updates');
-const updateStatus=document.querySelector('#update-status');
-const updateDetails=document.querySelector('#update-details');
-const updateLink=document.querySelector('#update-link');
-function compareVersion(a,b){
-  const aa=String(a).split('.').map(Number),bb=String(b).split('.').map(Number);
-  for(let i=0;i<Math.max(aa.length,bb.length);i++){
-    if((aa[i]||0)!==(bb[i]||0))return (aa[i]||0)>(bb[i]||0)?1:-1;
-  }
-  return 0;
-}
-checkUpdates.addEventListener('click',async()=>{
-  checkUpdates.disabled=true;updateLink.hidden=true;updateStatus.textContent='Checking GitHub...';updateDetails.textContent='';
-  try{
-    const request=await fetch('https://raw.githubusercontent.com/SirPaul-code/Clippah/main/manifest.json',{cache:'no-store'});
-    if(!request.ok)throw new Error('GitHub returned HTTP '+request.status);
-    const manifest=await request.json();
-    if(!/^\d+\.\d+\.\d+$/.test(manifest.version))throw new Error('Invalid release version.');
-    const installed=chrome.runtime.getManifest().version;
-    if(compareVersion(manifest.version,installed)>0){
-      updateStatus.textContent='New version '+manifest.version+' available';
-      updateDetails.textContent='Installed: '+installed+'. Open GitHub, replace the files in your current extension folder and click Reload in chrome://extensions. Never uninstall the extension just to upgrade.';
-      updateLink.href='https://github.com/SirPaul-code/Clippah/tree/main';updateLink.hidden=false;
-    }else{
-      updateStatus.textContent='You are up to date ('+installed+')';
-      updateDetails.textContent='GitHub main: '+manifest.version;
-    }
-  }catch(error){
-    updateStatus.textContent='Update check failed';
-    updateDetails.textContent=error.message+' · Check your internet connection or GitHub access.';
-  }finally{checkUpdates.disabled=false;}
-});
