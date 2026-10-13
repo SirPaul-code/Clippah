@@ -252,7 +252,8 @@ function renderRuler() {
   const total = totalDuration();
   els.ruler.innerHTML = '';
   if (!total) return;
-  const steps = total <= 15 ? 1 : total <= 60 ? 5 : total <= 180 ? 10 : 30;
+  const needed=80/Math.max(12,state.timelinePixelsPerSecond);
+  const steps=[.5,1,2,5,10,15,30,60,120,300,600].find(x=>x>=needed)||600;
   for (let t = 0; t <= total + .001; t += steps) {
     const tick = document.createElement('span');
     tick.className = 'ruler-tick';
@@ -332,6 +333,7 @@ function renderPlayhead() {
   const x = total ? 96 + (clamp(state.globalTime,0,total)/total)*trackWidth : 96;
   els.playhead.style.left = `${x}px`;
   els.time.textContent = fmt(state.globalTime);
+  scrollPlayheadIntoView();
 }
 function timelineDropIndex(clientX) {
   const total = totalDuration(), layout = sequenceLayout(), r = els.videoTrack.getBoundingClientRect();
@@ -448,9 +450,18 @@ function removeNearestKeyframe() {
   let best=0,delta=Infinity; segment.motion.forEach((k,i)=>{const d=Math.abs(k.time-loc.sourceTime);if(d<delta){delta=d;best=i;}}); segment.motion.splice(best,1); saveProject(); renderKeyframes(); renderTimeline(); draw();
 }
 function clearMotion() { const segment=selectedSegment(); if(!segment)return; segment.motion=[]; saveProject(); renderKeyframes(); renderTimeline(); draw(); }
-function renderKeyframes() {
-  const segment=selectedSegment(); els.keyframeList.innerHTML=''; els.keyframeCount.textContent=String(segment?.motion?.length||0);
-  for(const keyframe of segment?.motion||[]) { const b=document.createElement('button'); b.className='keyframe-chip'; b.textContent=fmt(keyframe.time-segment.in); b.title=`Source ${fmt(keyframe.time)}`; b.onclick=()=>seekGlobal(sourceToGlobal(segment,keyframe.time),true); els.keyframeList.appendChild(b); }
+function renderKeyframes(){
+  const segment=selectedSegment();els.keyframeList.innerHTML='';
+  els.keyframeCount.textContent=String(segment?.motion?.length||0);
+  for(const k of segment?.motion||[]){
+    const b=document.createElement('button');b.type='button';
+    b.className='keyframe-chip'+(state.selectedCameraKeyframeId===k.id?' active':'');
+    b.textContent=fmt(sourceToGlobal(segment,k.time))+' · '+Math.round(k.zoom*100)+'%';
+    b.title='Jump to camera keyframe at '+fmt(k.time);
+    b.onclick=async()=>{await seekGlobal(sourceToGlobal(segment,k.time),true);state.selectedSegmentId=segment.id;state.selectedCameraKeyframeId=k.id;renderTimeline();};
+    els.keyframeList.appendChild(b);
+  }
+  renderSelectedKeyframeEditor();
 }
 
 function sourceRegion(video = els.source, clip = null) {
@@ -1000,6 +1011,192 @@ function commitCameraKeyframe(options={}){
   syncInspector();draw();
   captureCameraKeyframePoster(loc.segment,state.selectedCameraKeyframeId);
   if(!options.silent)toast('Camera keyframe saved: '+fmt(sourceToGlobal(loc.segment,time)));
+}
+
+
+/* Large filmstrip timeline and user-draggable camera keyframes */
+function updateTimelineSize(){
+  if(!els.timelineViewport)return;
+  const available=Math.max(280,els.timelineViewport.clientWidth);
+  const width=ClippahTimeline.widthForTimeline(available,totalDuration(),state.timelinePixelsPerSecond,96);
+  els.timeline.style.width=width+'px';
+}
+function timelineTimeFromClient(clientX){
+  const rect=els.videoTrack.getBoundingClientRect();
+  return ClippahTimeline.timeForPoint(clientX,rect.left,rect.width,totalDuration());
+}
+function scrollPlayheadIntoView(){
+  const viewport=els.timelineViewport;if(!viewport||!state.playing)return;
+  const playheadX=parseFloat(els.playhead.style.left)||96;
+  const max=viewport.scrollLeft+viewport.clientWidth;
+  if(playheadX>max-52)viewport.scrollLeft=playheadX-viewport.clientWidth*.75;
+  else if(playheadX<viewport.scrollLeft+40)viewport.scrollLeft=Math.max(0,playheadX-80);
+}
+function captureCameraKeyframePoster(segment,keyframeId){
+  const frame=segment?.motion?.find(k=>k.id===keyframeId);
+  if(!frame||!els.preview.width||!els.preview.height)return;
+  try{
+    const canvas=document.createElement('canvas');canvas.width=112;canvas.height=64;
+    const ctx=canvas.getContext('2d');if(!ctx)return;
+    ctx.drawImage(els.preview,0,0,canvas.width,canvas.height);
+    const poster=canvas.toDataURL('image/webp',.44);
+    if(poster.length<26000){frame.poster=poster;saveProject();renderMotionTrack();}
+  }catch(error){console.warn('Keyframe preview unavailable',error);}
+}
+function selectedCameraKeyframe(){
+  if(!state.selectedCameraKeyframeId)return null;
+  const segment=selectedSegment();
+  const frame=segment?.motion.find(k=>k.id===state.selectedCameraKeyframeId);
+  return frame?{segment,frame}:null;
+}
+function renderSelectedKeyframeEditor(){
+  const target=selectedCameraKeyframe();
+  const wrap=els.selectedCameraKeyframe;if(!wrap)return;
+  wrap.hidden=!target;
+  if(!target)return;
+  const {segment,frame}=target;
+  if(document.activeElement!==els.cameraKeyframeTime)
+    els.cameraKeyframeTime.value=sourceToGlobal(segment,frame.time).toFixed(3);
+  if(document.activeElement!==els.cameraKeyframeZoom)
+    els.cameraKeyframeZoom.value=frame.zoom.toFixed(2);
+}
+function renderMotionTrack(){
+  if(!els.motionTrack||!els.motionKeyframes)return;
+  els.motionKeyframes.innerHTML='';
+  els.motionCurve.innerHTML='';
+  const layout=sequenceLayout(),duration=totalDuration();
+  if(!duration)return;
+  const all=[];
+  for(const item of layout){
+    const frames=item.segment.motion||[];
+    for(const k of frames){
+      k.id||=uuid();
+      const outputTime=sourceToGlobal(item.segment,k.time);
+      const percent=ClippahTimeline.positionForTime(outputTime,duration);
+      all.push({time:outputTime,frame:k,segment:item.segment});
+      const stem=document.createElement('span');stem.className='motion-marker';
+      stem.style.left=percent+'%';els.motionKeyframes.appendChild(stem);
+      const card=document.createElement('button');card.type='button';
+      card.className='motion-keyframe'+(state.selectedCameraKeyframeId===k.id?' selected':'')+(state.lastCreatedKeyframeId===k.id?' new-keyframe':'');
+      card.dataset.keyframeId=k.id;
+      card.dataset.segmentId=item.segment.id;
+      card.title='Camera keyframe '+fmt(outputTime)+' • drag horizontally to change its time';
+      card.style.left='clamp(0px,calc('+percent+'% - 42px),calc(100% - 84px))';
+      const thumb=document.createElement('span');thumb.className='motion-thumb';
+      if(k.poster?.startsWith('data:image/webp;base64,')&&k.poster.length<26000)thumb.style.backgroundImage='url("'+k.poster+'")';
+      const windowBox=document.createElement('span');windowBox.className='motion-thumb-window';
+      const bounds=ClippahTimeline.cameraWindow(k);
+      windowBox.style.left=(bounds.left*100)+'%';windowBox.style.top=(bounds.top*100)+'%';
+      windowBox.style.width=(bounds.width*100)+'%';windowBox.style.height=(bounds.height*100)+'%';
+      thumb.appendChild(windowBox);
+      const meta=document.createElement('span');meta.className='motion-kf-meta';
+      meta.innerHTML='<b>'+esc(fmt(outputTime))+'</b> · '+Math.round(k.zoom*100)+'%';
+      card.append(thumb,meta);
+      card.addEventListener('pointerdown',event=>beginKeyframeDrag(event,item.segment,k.id,card,stem));
+      els.motionKeyframes.appendChild(card);
+    }
+  }
+  state.lastCreatedKeyframeId=null;
+  if(all.length>0){
+    const points=all.sort((a,b)=>a.time-b.time).map(({time,frame})=>{
+      const x=ClippahTimeline.positionForTime(time,duration)*10;
+      const y=75-(clamp(frame.zoom,1,3)-1)*22;
+      return x.toFixed(2)+','+y.toFixed(2);
+    }).join(' ');
+    const curve=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    curve.setAttribute('points',points);
+    els.motionCurve.appendChild(curve);
+  }
+  renderSelectedKeyframeEditor();
+}
+function beginKeyframeDrag(event,segment,id,card,stem){
+  if(event.button!==0)return;
+  event.preventDefault();event.stopPropagation();
+  if(state.playing)pauseSequence();
+  const keyframe=segment.motion.find(k=>k.id===id);if(!keyframe)return;
+  const downX=event.clientX,initial=keyframe.time;
+  state.selectedSegmentId=segment.id;state.selectedCameraKeyframeId=id;
+  const getPosition=clientX=>{
+    const item=sequenceLayout().find(entry=>entry.segment.id===segment.id);
+    if(!item)return initial;
+    const local=clamp(timelineTimeFromClient(clientX),item.start,item.end);
+    return clamp(segment.in+(local-item.start)*segment.speed,segment.in,segment.out);
+  };
+  card.setPointerCapture(event.pointerId);
+  card.classList.add('selected');
+  let didMove=false,pending=initial;
+  function move(e){
+    if(e.pointerId!==event.pointerId)return;
+    if(Math.abs(e.clientX-downX)>4)didMove=true;
+    if(!didMove)return;
+    pending=getPosition(e.clientX);
+    const global=sourceToGlobal(segment,pending);
+    const percent=ClippahTimeline.positionForTime(global,totalDuration());
+    card.style.left='clamp(0px,calc('+percent+'% - 42px),calc(100% - 84px))';
+    stem.style.left=percent+'%';
+    card.querySelector('.motion-kf-meta b').textContent=fmt(global);
+    card.classList.add('dragging');
+  }
+  async function finish(e){
+    if(e.pointerId!==event.pointerId)return;
+    card.removeEventListener('pointermove',move);
+    card.removeEventListener('pointerup',finish);
+    card.removeEventListener('pointercancel',cancel);
+    try{card.releasePointerCapture(event.pointerId);}catch(_){}
+    if(didMove){
+      const result=ClippahTimeline.moveKeyframe(segment.motion,id,pending,segment.in,segment.out,30);
+      if(!result.moved){renderMotionTrack();return;}
+      delete keyframe.poster;
+      await saveProject();
+      const seek=sourceToGlobal(segment,result.time);
+      await seekGlobal(seek,true);
+      state.selectedSegmentId=segment.id;state.selectedCameraKeyframeId=id;
+      captureCameraKeyframePoster(segment,id);
+      renderTimeline();draw();
+    }else{
+      await seekGlobal(sourceToGlobal(segment,initial),true);
+      state.selectedSegmentId=segment.id;state.selectedCameraKeyframeId=id;
+      captureCameraKeyframePoster(segment,id);
+      renderTimeline();
+    }
+  }
+  function cancel(e){
+    if(e.pointerId!==event.pointerId)return;
+    card.removeEventListener('pointermove',move);
+    card.removeEventListener('pointerup',finish);
+    card.removeEventListener('pointercancel',cancel);
+    try{card.releasePointerCapture(event.pointerId);}catch(_){}
+    renderMotionTrack();
+  }
+  card.addEventListener('pointermove',move);
+  card.addEventListener('pointerup',finish);
+  card.addEventListener('pointercancel',cancel);
+}
+async function setSelectedKeyframeTime(globalTime){
+  const target=selectedCameraKeyframe();if(!target)return;
+  const item=sequenceLayout().find(x=>x.segment.id===target.segment.id);if(!item)return;
+  const source=target.segment.in+(clamp(globalTime,item.start,item.end)-item.start)*target.segment.speed;
+  const result=ClippahTimeline.moveKeyframe(target.segment.motion,target.frame.id,source,target.segment.in,target.segment.out,30);
+  if(!result.moved)return;
+  delete target.frame.poster;
+  await saveProject();
+  await seekGlobal(sourceToGlobal(target.segment,result.time),true);
+  state.selectedSegmentId=target.segment.id;state.selectedCameraKeyframeId=target.frame.id;
+  captureCameraKeyframePoster(target.segment,target.frame.id);
+  renderTimeline();draw();
+}
+function deleteSelectedCameraKeyframe(){
+  const target=selectedCameraKeyframe();if(!target)return;
+  target.segment.motion=target.segment.motion.filter(k=>k.id!==target.frame.id);
+  state.selectedCameraKeyframeId=null;saveProject();renderTimeline();draw();
+}
+async function jumpCameraKeyframe(direction){
+  const segment=selectedSegment();if(!segment?.motion.length)return;
+  const sorted=[...segment.motion].sort((a,b)=>a.time-b.time);
+  const idx=sorted.findIndex(k=>k.id===state.selectedCameraKeyframeId);
+  const next=sorted[(idx+direction+sorted.length)%sorted.length];if(!next)return;
+  await seekGlobal(sourceToGlobal(segment,next.time),true);
+  state.selectedCameraKeyframeId=next.id;renderTimeline();
 }
 
 function normalizeTransform(value, fallback){
