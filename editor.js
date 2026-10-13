@@ -5,7 +5,7 @@ const DB_VERSION = 3;
 const PROJECT_KEY = 'studio:project:v4';
 
 const els = {
-  projectTitle: $('#project-title'), projectMeta: $('#project-meta'), export: $('#export'), exportStatus: $('#export-status'), settings: $('#settings'),
+  projectTitle: $('#project-title'), projectMeta: $('#project-meta'), export: $('#export'), exportStatus: $('#export-status'), exportDialog: $('#export-dialog'), exportTitle: $('#export-title'), exportSpinner: $('#export-spinner'), exportPhase: $('#export-phase'), exportPercent: $('#export-percent'), exportPosition: $('#export-position'), exportEta: $('#export-eta'), exportProgressTrack: $('#export-progress-track'), exportProgressBar: $('#export-progress-bar'), exportFile: $('#export-file'), exportBytes: $('#export-bytes'), exportDetail: $('#export-detail'), exportClose: $('#export-close'), settings: $('#settings'),
   refresh: $('#refresh'), folderFilter: $('#folder-filter'), organize: $('#organize'), bulkBar: $('#bulk-bar'), bulkCount: $('#bulk-count'), moveFolder: $('#move-folder'), newFolder: $('#new-folder'), bulkDone: $('#bulk-done'), clipList: $('#clip-list'),
   toolSelect: $('#tool-select'), toolCut: $('#tool-cut'), addText: $('#add-text'), viewerShell: $('#viewer-shell'), emptyState: $('#empty-state'), stage: $('#stage'), preview: $('#preview'), viewerGuides: $('#viewer-guides'), autoHint: $('#auto-hint'),
   play: $('#play'), time: $('#time'), duration: $('#duration'), splitAtPlayhead: $('#split-at-playhead'), deleteSegment: $('#delete-segment'), timeline: $('#timeline'), ruler: $('#ruler'), videoTrack: $('#video-track'), waveform: $('#waveform'), audioFades: $('#audio-fades'), textTrack: $('#text-track'), captionTrack: $('#caption-track'), playhead: $('#playhead'),
@@ -22,7 +22,7 @@ const state = {
   selectedSegmentId: null, selectedTextId: null, tool: 'select', globalTime: 0, playing: false, playRaf: 0,
   sourceUrl: null, loadedSegmentId: null, sourceReady: false, draggingCanvas: false, dragStart: null, transformStart: null, textDrag: false,
   waveformCache: new Map(), waveformPending: new Set(), saveTimer: 0, toastTimer: 0, pendingInsertIndex: null, dragInsertIndex: null,
-  exporting: false, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
+  exporting: false, exportCancelled: false, exportDownloadId: null, exportStartTime: 0, audioContext: null, mediaSourceNode: null, previewGain: null, exportGain: null, exportDest: null,
   contextSegmentId: null, fonts: ['Arial','Verdana','Tahoma','Trebuchet MS','Georgia','Times New Roman','Courier New','Impact','Segoe UI','Roboto','Inter','Helvetica']
 };
 
@@ -567,12 +567,248 @@ function drawWaveform(){
 function renderAll(){renderFolders();renderLibrary();updateBulkBar();renderTimeline();syncInspector();populateFonts();}
 
 function aspectDims(){return state.project.aspect==='9:16'?[1080,1920]:state.project.aspect==='1:1'?[1080,1080]:[1920,1080];}
-async function exportSequence(){
-  if(state.exporting||!state.project.segments.length)return;state.exporting=true;els.export.disabled=true;els.exportStatus.textContent='Rendering locally…';pauseSequence(false);await ensureAudioGraph();await state.audioContext.resume();const [w,h]=aspectDims(),canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d',{alpha:false}),canvasStream=canvas.captureStream(30);state.exportGain.gain.value=0;const out=new MediaStream([...canvasStream.getVideoTracks(),...state.exportDest.stream.getAudioTracks()]);const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t))||'';const recorder=new MediaRecorder(out,mime?{mimeType:mime,videoBitsPerSecond:12000000}:undefined),chunks=[];recorder.ondataavailable=e=>e.data?.size&&chunks.push(e.data);recorder.start(1000);
+function exportName(){
+  return 'clippah-'+state.project.aspect.replace(':','x')+'-'+new Date().toISOString().replace(/\D/g,'').slice(0,14)+'.webm';
+}
+function exportCheckCancel(){
+  if(state.exportCancelled)throw new DOMException('Export cancelled','AbortError');
+}
+function exportWithTimeout(promise,ms,label){
+  let timer;
+  return Promise.race([promise,new Promise((_,reject)=>{
+    timer=setTimeout(()=>reject(new Error(label+' timed out. Keep Studio visible and try again.')),ms);
+  })]).finally(()=>clearTimeout(timer));
+}
+function showExportProgress(phase,percentage,rendered,total,detail){
+  const pct=clamp(Math.round(percentage),0,100);
+  els.exportProgressBar.style.width=pct+'%';
+  els.exportProgressTrack.setAttribute('aria-valuenow',String(pct));
+  els.exportPercent.textContent=pct+'%';
+  els.exportPhase.textContent=phase;
+  els.exportPosition.textContent=fmt(rendered)+' / '+fmt(total);
+  if(detail)els.exportDetail.textContent=detail;
+  if(phase==='Rendering video'&&rendered>.3&&state.exportStartTime){
+    const elapsed=(performance.now()-state.exportStartTime)/1000;
+    els.exportEta.textContent='Estimated remaining: '+fmt(Math.max(0,(total-rendered)/(rendered/Math.max(.1,elapsed))));
+  }else els.exportEta.textContent=phase==='Rendering video'?'Estimating remaining time...':phase;
+}
+function finishExportUi(title,detail,isError){
+  els.exportTitle.textContent=title;
+  els.exportDetail.textContent=detail;
+  els.exportSpinner.hidden=true;
+  els.exportClose.textContent='Close';
+  els.exportClose.disabled=false;
+  els.exportDialog.classList.toggle('export-error',Boolean(isError));
+}
+async function downloadWithSaveAs(blob,filename){
+  const url=URL.createObjectURL(blob);
+  if(!chrome.downloads?.download){
+    const link=document.createElement('a');
+    link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),120000);
+    return false;
+  }
   try{
-    const layout=sequenceLayout();for(const item of layout){await loadLocation({...item,globalTime:item.start,localOutput:0,sourceTime:item.segment.in},true);els.source.playbackRate=item.segment.speed;await els.source.play();await new Promise((resolve,reject)=>{const step=()=>{if(!state.exporting)return reject(new Error('Export cancelled'));const sourceTime=els.source.currentTime,localOutput=(sourceTime-item.segment.in)/item.segment.speed;state.exportGain.gain.value=audioLevel(item.segment,localOutput);drawFrame(ctx,w,h,{...item,globalTime:item.start+localOutput,localOutput,sourceTime},{guides:false});if(sourceTime>=item.segment.out-.02||els.source.ended){els.source.pause();state.exportGain.gain.value=0;return resolve()}requestAnimationFrame(step)};requestAnimationFrame(step)});}
-    const stopped=new Promise(resolve=>recorder.addEventListener('stop',resolve,{once:true}));recorder.stop();await stopped;const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`clippah-${state.project.aspect.replace(':','x')}-${Date.now()}.webm`;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);els.exportStatus.textContent=`Exported ${bytes(blob.size)}`;
-  }catch(error){try{recorder.stop()}catch(_){}els.exportStatus.textContent='Export failed';toast(error?.message||'Export failed.',true,5000)}finally{canvasStream.getTracks().forEach(t=>t.stop());state.exportGain.gain.value=0;state.exporting=false;els.export.disabled=false;await seekGlobal(state.globalTime,true)}
+    const id=await chrome.downloads.download({url,filename,saveAs:true,conflictAction:'uniquify'});
+    if(!Number.isInteger(id))throw new Error('Chrome did not create a download.');
+    state.exportDownloadId=id;
+    await new Promise((resolve,reject)=>{
+      let done=false;
+      const complete=error=>{
+        if(done)return;
+        done=true;chrome.downloads.onChanged.removeListener(changed);
+        if(error)reject(error);else resolve();
+      };
+      const check=item=>{
+        if(item?.state==='complete')complete();
+        if(item?.state==='interrupted')complete(
+          item.error==='USER_CANCELED'||state.exportCancelled?
+            new DOMException('Save As cancelled','AbortError'):
+            new Error('Download interrupted: '+(item.error||'unknown error')));
+      };
+      const changed=delta=>{
+        if(delta.id===id&&delta.state)check({state:delta.state.current,error:delta.error?.current});
+      };
+      chrome.downloads.onChanged.addListener(changed);
+      chrome.downloads.search({id}).then(items=>check(items?.[0])).catch(complete);
+    });
+    return true;
+  }finally{
+    state.exportDownloadId=null;
+    URL.revokeObjectURL(url);
+  }
+}
+async function exportSequence(){
+  if(state.exporting)return;
+  if(!state.project.segments.length){toast('Add a clip to the timeline first.',true);return;}
+  state.exporting=true;state.exportCancelled=false;state.exportDownloadId=null;state.exportStartTime=0;
+  els.export.disabled=true;
+  els.exportDialog.hidden=false;els.exportDialog.classList.remove('export-error');
+  els.exportTitle.textContent='Exporting video';els.exportSpinner.hidden=false;
+  els.exportClose.textContent='Cancel export';els.exportClose.disabled=false;
+  const duration=totalDuration(),restoreTime=state.globalTime,filename=exportName();
+  const [width,height]=aspectDims();
+  els.exportFile.textContent=filename+' · '+width+' × '+height+' · WebM';
+  els.exportBytes.textContent='Recorded: 0 KB';
+  els.exportStatus.textContent='Preparing export...';
+  showExportProgress('Preparing',0,0,duration,'Select the save location. Export runs in real time, so keep Studio in the foreground.');
+
+  // Audio resume and the native save dialog both require the initial click gesture.
+  let audioReady;
+  try{
+    const graph=ensureAudioGraph();
+    const resumed=state.audioContext?.resume();
+    audioReady=Promise.all([graph,resumed]).then(()=>null,error=>error);
+  }catch(error){audioReady=Promise.resolve(error);}
+  let picker=null,pickerError=null;
+  if(typeof window.showSaveFilePicker==='function'&&navigator.userActivation?.isActive!==false){
+    try{
+      picker=window.showSaveFilePicker({
+        suggestedName:filename,
+        types:[{description:'WebM video',accept:{'video/webm':['.webm']}}],
+        excludeAcceptAllOption:true
+      });
+    }catch(error){pickerError=error;}
+  }
+
+  let handle=null,writer=null,canvasStream=null,recorder=null,writeQueue=Promise.resolve(),writeError=null;
+  let chunks=[],written=0,saved=false;
+  try{
+    if(picker){
+      try{handle=await picker;}
+      catch(error){
+        if(error?.name==='AbortError')throw error;
+        pickerError=error;
+      }
+    }
+    exportCheckCancel();
+    if(handle)els.exportFile.textContent=handle.name+' · '+width+' × '+height+' · WebM';
+    if(!handle)showExportProgress('Preparing',0,0,duration,
+      'Choose a destination in the Chrome Save As dialog after rendering.'+(pickerError?' Native picker unavailable.':''));
+    const audioError=await exportWithTimeout(audioReady,12000,'Audio initialization');
+    if(audioError)throw audioError;
+    exportCheckCancel();
+    if(!state.exportDest?.stream)throw new Error('Audio output is unavailable.');
+    if(typeof MediaRecorder==='undefined')throw new Error('MediaRecorder is not supported by this browser.');
+    if(handle)writer=await handle.createWritable();
+    exportCheckCancel();
+    pauseSequence(false);
+    const layout=sequenceLayout(),first=layout[0];
+    if(!first)throw new Error('Timeline is empty.');
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+    const ctx=canvas.getContext('2d',{alpha:false});
+    if(!ctx)throw new Error('Unable to create export canvas.');
+    await exportWithTimeout(loadLocation({...first,globalTime:0,localOutput:0,sourceTime:first.segment.in},true),12000,'Loading video');
+    exportCheckCancel();
+    state.previewGain.gain.value=0;
+    drawFrame(ctx,width,height,{...first,globalTime:0,localOutput:0,sourceTime:first.segment.in},{guides:false});
+    canvasStream=canvas.captureStream(30);
+    const stream=new MediaStream([...canvasStream.getVideoTracks(),...state.exportDest.stream.getAudioTracks()]);
+    const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+      .find(type=>MediaRecorder.isTypeSupported(type))||'';
+    recorder=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:12000000}:undefined);
+    let recordingError=null;
+    recorder.addEventListener('error',event=>{recordingError=event.error||new Error('Video encoder failed.');});
+    recorder.addEventListener('dataavailable',event=>{
+      if(!event.data?.size)return;
+      written+=event.data.size;
+      if(writer){
+        writeQueue=writeQueue.then(()=>{if(writeError)throw writeError;return writer.write(event.data);})
+          .catch(error=>{writeError=error;});
+      }else chunks.push(event.data);
+    });
+    recorder.start(1000);
+    state.exportStartTime=performance.now();
+    let lastPaint=0;
+    for(const item of layout){
+      exportCheckCancel();
+      if(item!==first)await exportWithTimeout(
+        loadLocation({...item,globalTime:item.start,localOutput:0,sourceTime:item.segment.in},true),
+        12000,'Loading next clip');
+      exportCheckCancel();
+      state.previewGain.gain.value=0;
+      els.source.playbackRate=item.segment.speed;
+      await exportWithTimeout(els.source.play(),15000,'Video playback');
+      exportCheckCancel();
+      await new Promise((resolve,reject)=>{
+        let previousTime=els.source.currentTime,lastMotion=performance.now();
+        function step(){
+          try{
+            exportCheckCancel();
+            if(recordingError)throw recordingError;
+            if(writeError)throw writeError;
+            if(recorder.state!=='recording')throw new Error('Video encoder stopped unexpectedly.');
+            const now=performance.now(),sourceTime=els.source.currentTime;
+            if(sourceTime>previousTime+.005){previousTime=sourceTime;lastMotion=now;}
+            if(now-lastMotion>15000)throw new Error('Video stopped progressing. Keep Studio visible and check the source recording.');
+            const position=clamp((sourceTime-item.segment.in)/item.segment.speed,0,item.duration);
+            const rendered=clamp(item.start+position,0,duration);
+            state.exportGain.gain.value=audioLevel(item.segment,position);
+            drawFrame(ctx,width,height,{...item,globalTime:rendered,localOutput:position,sourceTime},{guides:false});
+            if(now-lastPaint>200||sourceTime>=item.segment.out-.02||els.source.ended){
+              lastPaint=now;
+              showExportProgress('Rendering video',rendered/Math.max(.001,duration)*95,rendered,duration,
+                'Rendering at playback speed. Keep the Studio tab in the foreground.');
+              els.exportBytes.textContent='Recorded: '+bytes(written);
+              els.exportStatus.textContent='Rendering '+Math.round(rendered/Math.max(.001,duration)*100)+'%';
+            }
+            if(sourceTime>=item.segment.out-.02||els.source.ended){
+              els.source.pause();state.exportGain.gain.value=0;resolve();return;
+            }
+            requestAnimationFrame(step);
+          }catch(error){reject(error);}
+        }
+        requestAnimationFrame(step);
+      });
+    }
+    exportCheckCancel();
+    showExportProgress('Finalizing WebM',96,duration,duration,'Finishing the video recording...');
+    els.exportStatus.textContent='Finalizing video...';
+    await exportWithTimeout(new Promise((resolve,reject)=>{
+      recorder.addEventListener('stop',resolve,{once:true});
+      recorder.addEventListener('error',event=>reject(event.error||new Error('Recorder error')),{once:true});
+      recorder.stop();
+    }),60000,'Finalizing WebM');
+    await writeQueue;
+    if(writeError)throw writeError;
+    exportCheckCancel();
+    showExportProgress('Saving file',99,duration,duration,'Writing video to the selected location...');
+    els.exportStatus.textContent='Saving video...';
+    if(writer){
+      await writer.close();saved=true;
+    }else{
+      const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});
+      if(!blob.size)throw new Error('The rendered video is empty.');
+      chunks=[];
+      showExportProgress('Waiting for Save As',99,duration,duration,'Choose the destination in the Chrome Save As dialog.');
+      saved=await downloadWithSaveAs(blob,filename);
+    }
+    exportCheckCancel();
+    showExportProgress('Complete',100,duration,duration,'Export finished.');
+    els.exportStatus.textContent='Exported '+bytes(written);
+    finishExportUi(saved?'Export complete':'Download started',
+      (saved?'Saved: ':'Download requested: ')+(handle?.name||filename)+' · '+bytes(written),false);
+    toast('Video export finished.');
+  }catch(error){
+    const cancelled=error?.name==='AbortError'||state.exportCancelled;
+    els.exportStatus.textContent=cancelled?'Export cancelled':'Export failed';
+    finishExportUi(cancelled?'Export cancelled':'Export failed',
+      cancelled?'No new video was saved.':(error?.message||'Unknown error.'),!cancelled);
+    if(!cancelled)toast('Export failed: '+(error?.message||'Unknown error'),true,6000);
+    console.error('Clippah export:',error);
+  }finally{
+    try{
+      if(recorder?.state==='recording')await exportWithTimeout(
+        new Promise(resolve=>{recorder.addEventListener('stop',resolve,{once:true});recorder.stop();}),
+        5000,'Stopping recorder');
+    }catch(error){console.warn('Clippah recorder cleanup:',error);}
+    if(writer&&!saved)try{await writeQueue;await writer.abort();}catch(error){console.warn('Partial export cleanup:',error);}
+    if(canvasStream)canvasStream.getTracks().forEach(track=>track.stop());
+    if(state.exportGain)state.exportGain.gain.value=0;
+    state.exporting=false;state.exportCancelled=false;state.exportDownloadId=null;
+    els.export.disabled=false;
+    try{await seekGlobal(restoreTime,true);}catch(error){console.warn('Could not restore the preview:',error);}
+  }
 }
 
 function frameDataUrl(){return els.preview.toDataURL('image/png');}
@@ -1084,7 +1320,7 @@ els.preview.addEventListener('wheel',event=>{
 
 // UI bindings
 els.inspectorTabs.forEach(button=>button.addEventListener('click',()=>switchPanel(button.dataset.panel)));
-els.toolSelect.addEventListener('click',()=>setTool('select'));els.toolCut.addEventListener('click',()=>setTool('cut'));els.addText.addEventListener('click',addTextLayer);els.newText.addEventListener('click',addTextLayer);els.play.addEventListener('click',playSequence);els.splitAtPlayhead.addEventListener('click',()=>splitSegment());els.deleteSegment.addEventListener('click',()=>state.selectedSegmentId&&removeSegment(state.selectedSegmentId));els.clipSplit.addEventListener('click',()=>splitSegment());els.clipRemove.addEventListener('click',()=>state.selectedSegmentId&&removeSegment(state.selectedSegmentId));els.export.addEventListener('click',exportSequence);els.settings.addEventListener('click',()=>chrome.runtime.openOptionsPage());els.refresh.addEventListener('click',()=>refreshLibrary(true));
+els.toolSelect.addEventListener('click',()=>setTool('select'));els.toolCut.addEventListener('click',()=>setTool('cut'));els.addText.addEventListener('click',addTextLayer);els.newText.addEventListener('click',addTextLayer);els.play.addEventListener('click',playSequence);els.splitAtPlayhead.addEventListener('click',()=>splitSegment());els.deleteSegment.addEventListener('click',()=>state.selectedSegmentId&&removeSegment(state.selectedSegmentId));els.clipSplit.addEventListener('click',()=>splitSegment());els.clipRemove.addEventListener('click',()=>state.selectedSegmentId&&removeSegment(state.selectedSegmentId));els.export.addEventListener('click',exportSequence);els.exportClose.addEventListener('click',()=>{if(!state.exporting){els.exportDialog.hidden=true;return;}state.exportCancelled=true;els.exportPhase.textContent='Cancelling...';els.exportClose.disabled=true;if(state.exportDownloadId!==null&&chrome.downloads?.cancel)chrome.downloads.cancel(state.exportDownloadId).catch(()=>{});});els.settings.addEventListener('click',()=>chrome.runtime.openOptionsPage());els.refresh.addEventListener('click',()=>refreshLibrary(true));
 
 els.videoTrack.addEventListener('dragover',event=>{event.preventDefault();event.dataTransfer.dropEffect=event.dataTransfer.types.includes('application/x-clippah-segment')?'move':'copy';state.dragInsertIndex=timelineDropIndex(event.clientX);els.videoTrack.classList.add('drag-over');showInsertMarker(state.dragInsertIndex)});els.videoTrack.addEventListener('dragleave',event=>{if(!els.videoTrack.contains(event.relatedTarget)){els.videoTrack.classList.remove('drag-over');els.videoTrack.querySelector('.insert-marker')?.remove()}});els.videoTrack.addEventListener('drop',event=>{event.preventDefault();els.videoTrack.classList.remove('drag-over');els.videoTrack.querySelector('.insert-marker')?.remove();const index=timelineDropIndex(event.clientX),segmentId=event.dataTransfer.getData('application/x-clippah-segment'),clipId=event.dataTransfer.getData('application/x-clippah-clip')||event.dataTransfer.getData('text/plain');if(segmentId)reorderSegment(segmentId,index);else if(clipById(clipId))insertClip(clipId,index)});
 
