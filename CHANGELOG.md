@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2 — 2026-10-13
+
+- Manual K camera keyframes: preview zoom and position first, then commit explicitly.
+- Video time synchronization on pause, awaited seeking, and protection from stale playback requests.
+- Remappable Studio keyboard shortcuts in Settings.
+- Check for updates from GitHub main; safe manual upgrade instructions for unpacked extensions.
+- Continued export progress, save picker, cancel and error handling improvements from 0.5.1.
+
+
 ## 0.5.0 — 2026-10-06
 
 - explicit Static / Animate viewport editing
