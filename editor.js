@@ -1129,10 +1129,15 @@ function renderMotionTrack(){
     }
   }
   state.lastCreatedKeyframeId=null;
-  if(all.length>0){
-    const points=all.sort((a,b)=>a.time-b.time).map(({time,frame})=>{
-      const x=ClippahTimeline.positionForTime(time,duration)*10;
-      const y=75-(clamp(frame.zoom,1,3)-1)*22;
+  // Separate curves per video segment: camera interpolation must not connect
+  // the end of one clip to an unrelated clip's opening pose.
+  for(const item of layout){
+    const frames=[...(item.segment.motion||[])].sort((a,b)=>a.time-b.time);
+    if(frames.length<2)continue;
+    const points=frames.map(k=>{
+      const t=sourceToGlobal(item.segment,k.time);
+      const x=ClippahTimeline.positionForTime(t,duration)*10;
+      const y=75-(clamp(k.zoom,1,3)-1)*22;
       return x.toFixed(2)+','+y.toFixed(2);
     }).join(' ');
     const curve=document.createElementNS('http://www.w3.org/2000/svg','polyline');
