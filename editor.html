@@ -225,6 +225,31 @@
   </aside>
 </main>
 
+
+<div id="export-dialog" class="export-dialog-backdrop" hidden>
+  <section class="export-dialog-card" role="dialog" aria-modal="true" aria-labelledby="export-title">
+    <div class="export-dialog-heading">
+      <div id="export-spinner" class="export-spinner" aria-hidden="true"></div>
+      <div class="export-heading-copy">
+        <strong id="export-title">Exporting video</strong>
+        <span id="export-phase" aria-live="polite">Preparing</span>
+      </div>
+    </div>
+    <div class="export-measure">
+      <strong id="export-percent">0%</strong>
+      <span id="export-position">0:00 / 0:00</span>
+    </div>
+    <div id="export-progress-track" class="export-progress-track" role="progressbar" aria-label="Video export progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="export-progress-bar" class="export-progress-bar"></div>
+    </div>
+    <p id="export-eta" class="export-eta">Preparing export...</p>
+    <div class="export-file-row"><span>OUTPUT</span><strong id="export-file">WebM video</strong></div>
+    <div class="export-file-row"><span>SIZE</span><strong id="export-bytes">Recorded: 0 KB</strong></div>
+    <p id="export-detail" class="export-detail" aria-live="polite">Keep this Studio tab visible until export completes.</p>
+    <div class="export-dialog-actions"><button id="export-close" class="ghost" type="button">Cancel export</button></div>
+  </section>
+</div>
+
 <div id="picker" class="modal-backdrop" hidden>
   <div class="picker-card" role="dialog" aria-modal="true" aria-labelledby="picker-title">
     <div class="picker-head"><div><strong id="picker-title">Add clip</strong><span>Choose from Library, or drag a clip directly onto V1.</span></div><button id="picker-close" aria-label="Close">×</button></div>
