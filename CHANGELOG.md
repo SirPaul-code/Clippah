@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1 — 2026-10-13
+
+- Diagnose which source file and write phase are blocked by Chrome/Windows security policy when the in-app updater fails.
+- Verify on-disk restoration of original files, including any placeholder file left by a rejected write.
+- Avoid rewriting unchanged files, preserving the manifest-last update order.
+- Stop offering immediate retry after security-blocked installation and link the official extension-only GitHub Actions build.
+- Add regression tests for security policy failure, complete rollback and unchanged-file skipping.
+- Clarify that browser/antivirus security policies cannot be bypassed by the extension and that manual installation can be necessary.
+
+
 ## 0.6.0 — 2026-10-13
 
 - Larger video timeline with horizontal zoom, Fit button, easier time-zero access and a draggable ruler/scrubbing.
