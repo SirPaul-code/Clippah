@@ -136,3 +136,8 @@
 #keyframe-list .keyframe-chip.active{border-color:#ae9eff;background:#353052}
 @media(max-width:1450px){.studio-column{grid-template-rows:50px minmax(0,1fr) minmax(350px,43vh)}.timeline-zoom input{width:78px}.camera-draft-status{display:none}}
 @media(max-width:1050px){.studio-column{grid-template-rows:50px 560px 390px}.transport-bar{gap:5px}.timeline-zoom{display:none}.camera-draft-status{display:none}}
+
+.license-badge{border:1px solid #69505e;border-radius:999px;padding:5px 9px;background:#22161d;color:#efbec9;font-size:11px;font-weight:850;white-space:nowrap}
+.license-badge.pro{border-color:#276d58;background:#133b2e;color:#91efd0}
+.camera-draft-status.is-pending{border:1px solid #8374dc;border-radius:7px;padding:4px 8px;background:#2b2550;animation:clippah-camera-pending .26s ease-out}
+@keyframes clippah-camera-pending{from{transform:scale(.96);opacity:.45}to{transform:scale(1);opacity:1}}
