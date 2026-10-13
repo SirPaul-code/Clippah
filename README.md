@@ -1,4 +1,4 @@
-# Clippah 0.5
+# Clippah 0.5.3
 
 **Clip where you watch. Finish in a lightweight local editor.**
 
@@ -6,7 +6,7 @@ Clippah is a Chromium extension + local Studio for clipping browser video, assem
 
 ## Install
 
-1. Download this repository as ZIP and extract it.
+1. Download **Clippah-v0.5.3.zip** (the extension-only GitHub Actions artifact), not the full GitHub source archive. Extract into a permanent folder you can write to (for example `Documents\\Clippah`).
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Click **Load unpacked**.
@@ -15,6 +15,17 @@ Clippah is a Chromium extension + local Studio for clipping browser video, assem
 7. Refresh an already-open video tab once.
 
 No npm/build step is required for the browser extension itself.
+
+## Updating without downloading ZIPs again
+
+1. Keep the existing Clippah extension installed. **Do not click Remove** (local clips and projects may be lost).
+2. Open **Clippah Settings -> In-app updates**.
+3. Click **Choose extension folder** once and select the **same exact directory** you used under Chrome `Load unpacked` (the one containing `manifest.json`). Grant read/write access.
+4. On a later release click **Check for updates -> Install update**. The updater retrieves exact files from a pinned GitHub commit, validates their Git blob checksums, overwrites only runtime files and reloads the installed extension automatically.
+5. If Chrome asks for write permission again after a browser restart, allow it in the app. Updates are user-initiated; Chrome does not support silently updating an unpacked extension without a user-granted folder handle.
+
+The in-app updater downloads files individually (not a potentially flagged full source ZIP), does not download executables or scripts and rolls back files if the update fails. Close Studio before installing updates. Only the extension's source files are modified; extension storage and captured clips stay in Chrome. If the folder was moved, choose its new location again.
+
 
 ## Important YouTube step — one click per tab
 
