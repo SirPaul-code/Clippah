@@ -6,7 +6,7 @@ Clippah is a Chromium extension + local Studio for clipping browser video, assem
 
 ## Install
 
-1. Download **Clippah-v0.5.3.zip** (the extension-only GitHub Actions artifact), not the full GitHub source archive. Extract into a permanent folder you can write to (for example `Documents\\Clippah`).
+1. Download the GitHub Actions artifact **Clippah-v0.5.3** (not the `-full` artifact). Extract the downloaded ZIP into a permanent writable folder such as `Documents\\Clippah`. Its files include `manifest.json` directly: no additional ZIP extraction or source repository is needed.
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Click **Load unpacked**.
